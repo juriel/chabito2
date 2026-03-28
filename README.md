@@ -22,7 +22,7 @@ Este es un bot de WhatsApp creado con Node.js y la biblioteca [Baileys](https://
 Para iniciar el bot, ejecuta el siguiente comando en la terminal:
 
 ```bash
-node index.js
+yarn start
 ```
 
 ### Autenticación
@@ -34,4 +34,4 @@ node index.js
 
 ## Notas adicionales
 
-- Si experimentas problemas de inicio de sesión o quieres vincular una cuenta diferente, puedes borrar la carpeta `auth_info_baileys/` y volver a ejecutar `node index.js` para generar un nuevo código QR.
+- Si experimentas problemas de inicio de sesión o quieres vincular una cuenta diferente, puedes borrar la carpeta `auth_info_baileys/` y volver a ejecutar `yarn start` para generar un nuevo código QR.
