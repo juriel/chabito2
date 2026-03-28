@@ -17,19 +17,21 @@ import { Boom } from '@hapi/boom';
 
 export class WhatsappSocketEnvelope {
     // Máquina de estados
+    public uuid: string;
     public sock?: WASocket;
     public qr?: string;
     public connectionState: 'connecting' | 'open' | 'close' | 'undefined' = 'undefined';
     public lastDisconnect?: any;
-    
+
     private groupCache: NodeCache;
 
-    constructor() {
+    constructor(uuid: string) {
+        this.uuid = uuid;
         this.groupCache = new NodeCache({ /* ... */ });
     }
 
     public async connect(): Promise<void> {
-        const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+        const { state, saveCreds } = await useMultiFileAuthState(`auth_info_baileys/${this.uuid}`);
         const { version, isLatest } = await fetchLatestBaileysVersion();
         console.log(`Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
@@ -43,7 +45,7 @@ export class WhatsappSocketEnvelope {
 
         // Configurar Eventos
         this.setupEvents();
-        
+
         // Guardar credenciales al cambiar
         this.sock.ev.on("creds.update", saveCreds);
     }
@@ -77,7 +79,7 @@ export class WhatsappSocketEnvelope {
 
     private async handleConnectionUpdate(update: Partial<ConnectionState>): Promise<void> {
         const { connection, lastDisconnect, qr } = update;
-        
+
         // Actualizamos estado de la instancia
         if (connection) this.connectionState = connection as any;
         if (lastDisconnect) this.lastDisconnect = lastDisconnect;
@@ -90,7 +92,7 @@ export class WhatsappSocketEnvelope {
         if (this.connectionState === 'close') {
             const statusCode = (this.lastDisconnect?.error as Boom)?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            
+
             console.log('❌ Conexión cerrada debido a: ', this.lastDisconnect?.error?.message || this.lastDisconnect?.error);
             console.log('🔄 ¿Reconectar?: ', shouldReconnect);
 
