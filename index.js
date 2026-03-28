@@ -19,6 +19,22 @@ async function connectToWhatsApp() {
         logger: P({ level: 'info' }) // you can configure this as much as you want
     })
 
+    sock.ev.on('messages.upsert', async (m) => {
+        console.log('\n--- NUEVO EVENTO DE MENSAJE ---')
+        console.log(JSON.stringify(m, undefined, 2))
+        
+        const msg = m.messages[0]
+        if (!msg || !msg.message) return // Asegurarnos de que no crashee si viene vacío
+
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ''
+        const jid = msg.key.remoteJid
+
+        // Respondemos solo si no es nuestro propio mensaje para evitar bucle
+        if (!msg.key.fromMe && text.toLowerCase().includes('chabito')) {
+            await sock.sendMessage(jid, { text: '¡Hola! Aquí está tu Chabito.' })
+        }
+    })
+
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update
 
@@ -32,7 +48,7 @@ async function connectToWhatsApp() {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut
             console.log('❌ Conexión cerrada debido a: ', lastDisconnect?.error?.message || lastDisconnect?.error)
             console.log('🔄 ¿Reconectar?: ', shouldReconnect)
-            
+
             if (shouldReconnect) {
                 // Wait a bit to avoid maxing out the event loop if the error is persistent
                 setTimeout(connectToWhatsApp, 2000)
