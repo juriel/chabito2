@@ -9,27 +9,58 @@ import {
 } from 'baileys';
 import type {
     ConnectionState,
-    BaileysEventMap
+    BaileysEventMap,
+    WASocket
 } from 'baileys';
 import NodeCache from 'node-cache';
 import { Boom } from '@hapi/boom';
 
-const groupCache = new NodeCache({ /* ... */ });
+export class WhatsappSocketEnvelope {
+    // Máquina de estados
+    public sock?: WASocket;
+    public qr?: string;
+    public connectionState: 'connecting' | 'open' | 'close' | 'undefined' = 'undefined';
+    public lastDisconnect?: any;
+    
+    private groupCache: NodeCache;
 
-async function connectToWhatsApp(): Promise<void> {
-    const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`Using WA v${version.join('.')}, isLatest: ${isLatest}`);
+    constructor() {
+        this.groupCache = new NodeCache({ /* ... */ });
+    }
 
-    const sock = makeWASocket({
-        version,
-        auth: state,
-        browser: Browsers.macOS("Desktop"),
-        cachedGroupMetadata: async (jid) => groupCache.get(jid) as any,
-        logger: P({ level: 'info' }) as any
-    });
+    public async connect(): Promise<void> {
+        const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+        console.log(`Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
-    sock.ev.on('messages.upsert', async (m: BaileysEventMap['messages.upsert']) => {
+        this.sock = makeWASocket({
+            version,
+            auth: state,
+            browser: Browsers.macOS("Desktop"),
+            cachedGroupMetadata: async (jid) => this.groupCache.get(jid) as any,
+            logger: P({ level: 'info' }) as any
+        });
+
+        // Configurar Eventos
+        this.setupEvents();
+        
+        // Guardar credenciales al cambiar
+        this.sock.ev.on("creds.update", saveCreds);
+    }
+
+    private setupEvents(): void {
+        if (!this.sock) return;
+
+        this.sock.ev.on('messages.upsert', async (m: BaileysEventMap['messages.upsert']) => {
+            await this.handleMessagesUpsert(m);
+        });
+
+        this.sock.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
+            await this.handleConnectionUpdate(update);
+        });
+    }
+
+    private async handleMessagesUpsert(m: BaileysEventMap['messages.upsert']): Promise<void> {
         console.log('\n--- NUEVO EVENTO DE MENSAJE ---');
         console.log(JSON.stringify(m, undefined, 2));
 
@@ -40,33 +71,37 @@ async function connectToWhatsApp(): Promise<void> {
         const jid = msg.key.remoteJid;
 
         if (jid && !msg.key.fromMe && text.toLowerCase().includes('chabito')) {
-            await sock.sendMessage(jid, { text: '¡Hola! Aquí está tu Chabito.' });
+            await this.sock?.sendMessage(jid, { text: '¡Hola! Aquí está tu Chabito.' });
         }
-    });
+    }
 
-    sock.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
+    private async handleConnectionUpdate(update: Partial<ConnectionState>): Promise<void> {
         const { connection, lastDisconnect, qr } = update;
+        
+        // Actualizamos estado de la instancia
+        if (connection) this.connectionState = connection as any;
+        if (lastDisconnect) this.lastDisconnect = lastDisconnect;
+        if (qr) this.qr = qr;
 
-        if (qr) {
-            console.log(await QRCode.toString(qr, { type: 'terminal', small: true }));
+        if (this.qr) {
+            console.log(await QRCode.toString(this.qr, { type: 'terminal', small: true }));
         }
 
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('❌ Conexión cerrada debido a: ', lastDisconnect?.error?.message || lastDisconnect?.error);
+        if (this.connectionState === 'close') {
+            const statusCode = (this.lastDisconnect?.error as Boom)?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            
+            console.log('❌ Conexión cerrada debido a: ', this.lastDisconnect?.error?.message || this.lastDisconnect?.error);
             console.log('🔄 ¿Reconectar?: ', shouldReconnect);
 
             if (shouldReconnect) {
-                setTimeout(connectToWhatsApp, 2000);
+                // Volver a establecer conexión invocándose a sí mismo
+                setTimeout(() => this.connect(), 2000);
             } else {
                 console.log('⚠️ Has cerrado sesión. Borra la carpeta auth_info_baileys para volver a escanear el QR.');
             }
-        } else if (connection === 'open') {
+        } else if (this.connectionState === 'open') {
             console.log('✅ ¡Conectado a WhatsApp con éxito!');
         }
-    });
-
-    sock.ev.on("creds.update", saveCreds);
+    }
 }
-
-export { connectToWhatsApp };

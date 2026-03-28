@@ -1,4 +1,4 @@
-import { connectToWhatsApp } from "./whatsapp_main.js";
+import { WhatsappSocketEnvelope } from "./whatsapp_main.js";
 
-// Inicia la conexión
-connectToWhatsApp();
+const bot = new WhatsappSocketEnvelope();
+bot.connect().catch(console.error);
