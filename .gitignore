@@ -1,3 +1,6 @@
+config/
+
+
 node_modules/
 dist/
 auth_info_baileys/
