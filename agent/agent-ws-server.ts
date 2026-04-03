@@ -1,0 +1,108 @@
+import { createServer, type Server as HttpServer } from 'node:http';
+import WebSocket, { WebSocketServer, type RawData } from 'ws';
+import type { ChatMessageDto } from '../dto/chat-message-dto.js';
+
+function isChatMessageDto(payload: unknown): payload is ChatMessageDto {
+    if (!payload || typeof payload !== 'object') {
+        return false;
+    }
+
+    const candidate = payload as Record<string, unknown>;
+    return typeof candidate.bot_session === 'string'
+        && typeof candidate.agent_id === 'string'
+        && typeof candidate.agent_nickname === 'string'
+        && typeof candidate.peer_id === 'string'
+        && typeof candidate.peer_nickname === 'string'
+        && typeof candidate.whatsapp_message_id === 'string'
+        && (candidate.direction === 'in' || candidate.direction === 'out')
+        && typeof candidate.timestamp === 'number'
+        && typeof candidate.text === 'string'
+        && Array.isArray(candidate.attachments);
+}
+
+export class AgentWebSocketServer {
+    private server?: HttpServer;
+    private wsServer?: WebSocketServer;
+
+    constructor(
+        private readonly port = Number(process.env.AGENT_WS_PORT || 8081),
+        private readonly host = process.env.AGENT_WS_HOST || '0.0.0.0'
+    ) {}
+
+    public start(): void {
+        if (this.server) {
+            return;
+        }
+
+        this.server = createServer((req, res) => {
+            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                service: 'agent-ws-server',
+                status: 'ok',
+                websocket_url: `ws://${this.host}:${this.port}`
+            }));
+        });
+
+        this.wsServer = new WebSocketServer({ server: this.server });
+        this.wsServer.on('connection', (socket: WebSocket) => {
+            socket.on('message', (data: RawData) => {
+                try {
+                    const rawText = typeof data === 'string' ? data : data.toString('utf8');
+                    const parsed = JSON.parse(rawText) as unknown;
+
+                    if (!isChatMessageDto(parsed)) {
+                        throw new Error('Payload recibido no coincide con ChatMessageDto');
+                    }
+
+                    console.log('[AGENT-WS] DTO recibido:', parsed);
+                    socket.send(JSON.stringify(parsed));
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : String(error);
+                    socket.send(JSON.stringify({ error: message }));
+                }
+            });
+
+            socket.on('error', (error: Error) => {
+                console.error('[AGENT-WS] Error en socket:', error);
+            });
+        });
+
+        this.server.listen(this.port, this.host, () => {
+            console.log(`[AGENT-WS] Echo server escuchando en ws://${this.host}:${this.port}`);
+        });
+    }
+}
+
+export async function sendChatMessageToAgent(
+    payload: ChatMessageDto,
+    serverUrl = process.env.AGENT_WS_URL || `ws://127.0.0.1:${process.env.AGENT_WS_PORT || 8081}`
+): Promise<ChatMessageDto> {
+    return await new Promise<ChatMessageDto>((resolve, reject) => {
+        const ws = new WebSocket(serverUrl);
+
+        ws.once('open', () => {
+            ws.send(JSON.stringify(payload));
+        });
+
+        ws.once('message', (data: RawData) => {
+            try {
+                const rawText = typeof data === 'string' ? data : data.toString('utf8');
+                const parsed = JSON.parse(rawText) as unknown;
+
+                if (!isChatMessageDto(parsed)) {
+                    throw new Error('El servidor no devolvio un ChatMessageDto valido');
+                }
+
+                resolve(parsed);
+            } catch (error) {
+                reject(error);
+            } finally {
+                ws.close();
+            }
+        });
+
+        ws.once('error', () => {
+            reject(new Error(`No fue posible conectar con el servidor ${serverUrl}`));
+        });
+    });
+}
