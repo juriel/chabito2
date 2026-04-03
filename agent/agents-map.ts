@@ -20,12 +20,11 @@ export class AgentsMap {
         return AgentsMap.instance;
     }
 
-    public getOrCreate(message: ChatMessageDto): AiAgent {
-        const conversationKey = this.getConversationKey(message);
-        const existingAgent = this.agents.get(conversationKey);
+    public getOrCreate(conversationKey: string): AiAgent {
+        const current = this.agents.get(conversationKey);
 
-        if (existingAgent) {
-            return existingAgent;
+        if (current) {
+            return current;
         }
 
         const agent = new AiAgentBuilder()
@@ -40,7 +39,6 @@ export class AgentsMap {
         return agent;
     }
 
-    private getConversationKey(message: ChatMessageDto): string {
-        return `${message.bot_session}:${message.peer_id}`;
-    }
+
+
 }

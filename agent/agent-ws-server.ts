@@ -88,8 +88,14 @@ export class AgentWebSocketServer {
         console.log(`[AGENT-WS] Servidor PI Agent Core escuchando en ws://${this.host}:${this.port}`);
     }
 
+    private getConversationKey(message: ChatMessageDto): string {
+        return `${message.bot_session}:${message.peer_id}`;
+    }
+
     private async generateAgentResponse(message: ChatMessageDto): Promise<ChatMessageDto> {
-        const agent = this.agentsMap.getOrCreate(message);
+        const conversationKey = this.getConversationKey(message);
+        console.log(`[AGENT-WS] Obteniendo agente para conversationKey=${conversationKey}`);
+        const agent = this.agentsMap.getOrCreate(conversationKey);
         const responseText = await agent.prompt(message.text);
 
         return {
