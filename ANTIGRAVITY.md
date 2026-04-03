@@ -18,7 +18,7 @@ Chabito2 es un bot de WhatsApp que proporciona una API REST para gestionar múlt
 chabito2/
 ├── index.ts                    # Entry point
 ├── chabito_ws.ts               # API server (main logic)
-├── whatsapp_main.ts            # WhatsAppSocketEnvelope class
+├── whatsapp/whatsapp-socket-envelope.ts            # WhatsAppSocketEnvelope class
 ├── dto/
 │   └── chat-message.dto.ts     # ChatMessageDto interface
 ├── auth_info_baileys/          # Session credentials (DO NOT COMMIT)

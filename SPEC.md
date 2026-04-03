@@ -21,7 +21,7 @@ Bot de WhatsApp basado en la biblioteca Baileys que permite gestionar múltiples
 /
 ├── index.ts                 # Entry point - importa chabito_ws
 ├── chabito_ws.ts           # API REST + Express server (puerto 3000)
-├── whatsapp_main.ts        # Clase WhatsappSocketEnvelope
+├── whatsapp/whatsapp-socket-envelope.ts        # Clase WhatsappSocketEnvelope
 ├── whatsapp/               # Módulo WhatsApp (vacío, preparado para expansión)
 ├── dto/                    # Data Transfer Objects
 │   └── chat-message.dto.ts
@@ -35,7 +35,7 @@ Bot de WhatsApp basado en la biblioteca Baileys que permite gestionar múltiples
 
 ### Clase Principal: `WhatsappSocketEnvelope`
 
-Ubicación: `whatsapp_main.ts`
+Ubicación: `whatsapp/whatsapp-socket-envelope.ts`
 
 ```typescript
 export class WhatsappSocketEnvelope {

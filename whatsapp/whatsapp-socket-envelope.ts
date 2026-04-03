@@ -1,4 +1,5 @@
 import makeWASocket from 'baileys';
+import { rm } from 'node:fs/promises';
 import P from 'pino';
 import QRCode from 'qrcode';
 import {
@@ -14,11 +15,12 @@ import type {
 } from 'baileys';
 import NodeCache from 'node-cache';
 import { Boom } from '@hapi/boom';
-import type { ChatMessageDto } from './dto/chat-message-dto.js';
-import { sendChatMessageToAgent } from './agent/agent-ws-server.js';
+import type { ChatMessageDto } from '../dto/chat-message-dto.js';
+import { sendChatMessageToAgent } from '../agent/agent-ws-server.js';
 
 export class WhatsappSocketEnvelope {
-    // Máquina de estados
+    private static readonly AUTH_INFO_DIR = 'auth_info_baileys';
+
     public uuid: string;
     public sock?: WASocket;
     public qr?: string;
@@ -29,27 +31,24 @@ export class WhatsappSocketEnvelope {
 
     constructor(uuid: string) {
         this.uuid = uuid;
-        this.groupCache = new NodeCache({ /* ... */ });
+        this.groupCache = new NodeCache({});
     }
 
     public async connect(): Promise<void> {
-        const { state, saveCreds } = await useMultiFileAuthState(`auth_info_baileys/${this.uuid}`);
+        const { state, saveCreds } = await useMultiFileAuthState(this.getSessionAuthPath());
         const { version, isLatest } = await fetchLatestBaileysVersion();
         console.log(`Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
         this.sock = makeWASocket({
             version,
             auth: state,
-            browser: Browsers.macOS("Desktop"),
+            browser: Browsers.macOS('Desktop'),
             cachedGroupMetadata: async (jid) => this.groupCache.get(jid) as any,
             logger: P({ level: 'info' }) as any
         });
 
-        // Configurar Eventos
         this.setupEvents();
-
-        // Guardar credenciales al cambiar
-        this.sock.ev.on("creds.update", saveCreds);
+        this.sock.ev.on('creds.update', saveCreds);
     }
 
     private setupEvents(): void {
@@ -108,7 +107,6 @@ export class WhatsappSocketEnvelope {
     private async handleConnectionUpdate(update: Partial<ConnectionState>): Promise<void> {
         const { connection, lastDisconnect, qr } = update;
 
-        // Actualizamos estado de la instancia
         if (connection) this.connectionState = connection as any;
         if (lastDisconnect) this.lastDisconnect = lastDisconnect;
         if (qr) this.qr = qr;
@@ -125,13 +123,24 @@ export class WhatsappSocketEnvelope {
             console.log('🔄 ¿Reconectar?: ', shouldReconnect);
 
             if (shouldReconnect) {
-                // Volver a establecer conexión invocándose a sí mismo
                 setTimeout(() => this.connect(), 2000);
             } else {
-                console.log('⚠️ Has cerrado sesión. Borra la carpeta auth_info_baileys para volver a escanear el QR.');
+                await this.deleteSessionAuthFolder();
+                console.log(`⚠️ Sesión cerrada. Se eliminó la carpeta de autenticación para ${this.uuid}.`);
             }
         } else if (this.connectionState === 'open') {
             console.log('✅ ¡Conectado a WhatsApp con éxito!');
         }
+    }
+
+    private getSessionAuthPath(): string {
+        return `${WhatsappSocketEnvelope.AUTH_INFO_DIR}/${this.uuid}`;
+    }
+
+    private async deleteSessionAuthFolder(): Promise<void> {
+        const sessionAuthPath = this.getSessionAuthPath();
+        await rm(sessionAuthPath, { recursive: true, force: true });
+        delete this.qr;
+        delete this.sock;
     }
 }
