@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     // 📁 Estructura
-    "rootDir": "./src",
+    "rootDir": ".",
     "outDir": "./dist",
 
     // ⚙️ Entorno Node
@@ -26,5 +26,6 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["**/*.ts", "**/*.d.ts"],
+  "exclude": ["dist", "node_modules"]
 }

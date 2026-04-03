@@ -1,37 +1,77 @@
 # Chabito2
 
-Este es un bot de WhatsApp creado con Node.js y la biblioteca [Baileys](https://github.com/WhiskeySockets/Baileys).
+Bot de WhatsApp construido con Node.js, [Baileys](https://github.com/WhiskeySockets/Baileys), una API HTTP con Express y un servidor WebSocket de agente basado en `ws`.
 
-## Requisitos previos
+## Requisitos
 
-- **Node.js**: Asegúrate de tener Node.js instalado (se recomienda una versión reciente como v18 o superior).
-- **Yarn** o **npm**: Para instalar las dependencias. El proyecto incluye un archivo `yarn.lock`, por lo que se recomienda usar Yarn.
+- Node.js 18 o superior
+- npm o yarn
 
 ## Instalación
 
-1. Clona el repositorio o abre una terminal en la carpeta del proyecto .
-2. Instala las dependencias ejecutando:
+```bash
+npm install
+```
 
-   ```bash
-   yarn install
-   ```
-   *(O si prefieres usar npm, ejecuta `npm install`)*
+Si prefieres Yarn:
+
+```bash
+yarn install
+```
+
+## Scripts
+
+- `npm run start`: ejecuta el proyecto en desarrollo usando `tsx`
+- `npm run build`: compila TypeScript a `dist/`
+
+La compilación ya no genera archivos `.map` dentro de los fuentes. Todo el output compilado se escribe en `dist/`.
 
 ## Ejecución
 
-Para iniciar el bot, ejecuta el siguiente comando en la terminal:
+Para iniciar la API y el servidor WebSocket:
 
 ```bash
-yarn start
+npm run start
 ```
 
-### Autenticación
+Servicios que se levantan al iniciar:
 
-1. Al ejecutar el script por primera vez, verás que se genera un **código QR** directamente en la terminal.
-2. Abre WhatsApp en tu teléfono, ve a **Dispositivos vinculados** y selecciona **Vincular un dispositivo**.
-3. Escanea el código QR que aparece en tu terminal.
-4. Una vez escaneado, la sesión se guardará automáticamente en la carpeta `auth_info_baileys/`. Para futuras ejecuciones, el bot intentará reutilizar esta sesión y no será necesario volver a escanear el QR a menos que se cierre la sesión desde el teléfono.
+- API HTTP de Express en `http://localhost:3000` por defecto
+- Servidor WebSocket del agente en `ws://127.0.0.1:8081` por defecto
 
-## Notas adicionales
+Variables de entorno soportadas:
 
-- Si experimentas problemas de inicio de sesión o quieres vincular una cuenta diferente, puedes borrar la carpeta `auth_info_baileys/` y volver a ejecutar `yarn start` para generar un nuevo código QR.
+- `PORT`: puerto de la API HTTP
+- `AGENT_WS_HOST`: host del servidor WebSocket
+- `AGENT_WS_PORT`: puerto del servidor WebSocket
+- `AGENT_WS_URL`: URL WebSocket que usa el cliente interno para enviar `ChatMessageDto`
+
+## Flujo de WhatsApp
+
+1. Crea una sesión con `POST /api/sessions/:uuid`.
+2. Consulta el QR con `GET /api/sessions/:uuid/qr`, `GET /api/sessions/:uuid/qr/text` o `GET /api/sessions/:uuid/qr/png`.
+3. Escanea el QR desde WhatsApp en tu teléfono.
+4. La sesión se guarda en `auth_info_baileys/` y se intenta restaurar automáticamente al reiniciar.
+
+## Endpoints HTTP
+
+- `POST /api/sessions/:uuid`: crea una nueva sesión en memoria
+- `GET /api/sessions/:uuid/qr`: devuelve el estado y el QR crudo
+- `GET /api/sessions/:uuid/qr/text`: devuelve el QR en ASCII
+- `GET /api/sessions/:uuid/qr/png`: devuelve el QR en PNG
+- `GET /api/sessions/:uuid/status`: devuelve el estado actual de la sesión
+
+## WebSocket del agente
+
+El servidor WebSocket recibe objetos `ChatMessageDto` y responde en modo echo con el mismo payload.
+
+Cuando entra un mensaje desde WhatsApp:
+
+1. Se transforma a `ChatMessageDto`.
+2. Se envía al servidor WebSocket del agente.
+3. La respuesta del WebSocket se reenvía al chat de WhatsApp.
+
+## Notas
+
+- `dist/` está ignorado en git.
+- Si necesitas volver a vincular la cuenta, elimina `auth_info_baileys/` y genera un nuevo QR.
