@@ -1,5 +1,5 @@
-import { AiAgent, AiAgentBuilder } from './ai-agent.js';
-import type { ChatMessageDto } from '../dto/chat-message-dto.js';
+import { AiAgent, AiAgentBuilder } from './ai-agent.ts';
+import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 
 export class AgentsMap {
     private static instance?: AgentsMap;

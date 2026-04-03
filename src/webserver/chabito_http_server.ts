@@ -2,8 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import QRCode from 'qrcode';
 import { mkdir, readdir } from 'node:fs/promises';
-import { WhatsappSocketEnvelope } from '../whatsapp/whatsapp-socket-envelope.js';
-import { AgentWebSocketServer } from '../agent/agent-ws-server.js';
+import { WhatsappSocketEnvelope } from '../whatsapp/whatsapp-socket-envelope.ts';
+import { AgentWebSocketServer } from '../agent/agent-ws-server.ts';
 
 export class ChabitoHttpServer {
     private readonly app = express();

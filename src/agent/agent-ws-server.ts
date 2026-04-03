@@ -1,7 +1,7 @@
 import { createServer, type Server as HttpServer } from 'node:http';
 import WebSocket, { WebSocketServer, type RawData } from 'ws';
-import { AgentsMap } from './agents-map.js';
-import type { ChatMessageDto } from '../dto/chat-message-dto.js';
+import { AgentsMap } from './agents-map.ts';
+import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 
 function isChatMessageDto(payload: unknown): payload is ChatMessageDto {
     if (!payload || typeof payload !== 'object') {

@@ -15,8 +15,8 @@ import type {
 } from 'baileys';
 import NodeCache from 'node-cache';
 import { Boom } from '@hapi/boom';
-import type { ChatMessageDto } from '../dto/chat-message-dto.js';
-import { sendChatMessageToAgent } from '../agent/agent-ws-server.js';
+import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
+import { sendChatMessageToAgent } from '../agent/agent-ws-server.ts';
 
 export class WhatsappSocketEnvelope {
     private static readonly AUTH_INFO_DIR = 'auth_info_baileys';

@@ -22,6 +22,8 @@
 
     // 🔧 Compatibilidad moderna
     "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
     "skipLibCheck": true
