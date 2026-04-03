@@ -27,49 +27,61 @@ export class AgentWebSocketServer {
     constructor(
         private readonly port = Number(process.env.AGENT_WS_PORT || 8081),
         private readonly host = process.env.AGENT_WS_HOST || '0.0.0.0'
-    ) {}
+    ) {
+        this.handleHttpRequest = this.handleHttpRequest.bind(this);
+        this.handleConnection = this.handleConnection.bind(this);
+        this.handleServerListening = this.handleServerListening.bind(this);
+    }
 
     public start(): void {
         if (this.server) {
             return;
         }
 
-        this.server = createServer((req, res) => {
-            res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({
-                service: 'agent-ws-server',
-                status: 'ok',
-                websocket_url: `ws://${this.host}:${this.port}`
-            }));
-        });
-
+        this.server = createServer(this.handleHttpRequest);
         this.wsServer = new WebSocketServer({ server: this.server });
-        this.wsServer.on('connection', (socket: WebSocket) => {
-            socket.on('message', (data: RawData) => {
-                try {
-                    const rawText = typeof data === 'string' ? data : data.toString('utf8');
-                    const parsed = JSON.parse(rawText) as unknown;
+        this.wsServer.on('connection', this.handleConnection);
 
-                    if (!isChatMessageDto(parsed)) {
-                        throw new Error('Payload recibido no coincide con ChatMessageDto');
-                    }
+        this.server.listen(this.port, this.host, this.handleServerListening);
+    }
 
-                    console.log('[AGENT-WS] DTO recibido:', parsed);
-                    socket.send(JSON.stringify(parsed));
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : String(error);
-                    socket.send(JSON.stringify({ error: message }));
-                }
-            });
+    private handleHttpRequest(_req: unknown, res: { writeHead: (statusCode: number, headers: Record<string, string>) => void; end: (body: string) => void }): void {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+            service: 'agent-ws-server',
+            status: 'ok',
+            websocket_url: `ws://${this.host}:${this.port}`
+        }));
+    }
 
-            socket.on('error', (error: Error) => {
-                console.error('[AGENT-WS] Error en socket:', error);
-            });
-        });
+    private handleConnection(socket: WebSocket): void {
+        socket.on('message', this.handleSocketMessage.bind(this, socket));
+        socket.on('error', this.handleSocketError.bind(this));
+    }
 
-        this.server.listen(this.port, this.host, () => {
-            console.log(`[AGENT-WS] Echo server escuchando en ws://${this.host}:${this.port}`);
-        });
+    private handleSocketMessage(socket: WebSocket, data: RawData): void {
+        try {
+            const rawText = typeof data === 'string' ? data : data.toString('utf8');
+            const parsed = JSON.parse(rawText) as unknown;
+
+            if (!isChatMessageDto(parsed)) {
+                throw new Error('Payload recibido no coincide con ChatMessageDto');
+            }
+
+            console.log('[AGENT-WS] DTO recibido:', parsed);
+            socket.send(JSON.stringify(parsed));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            socket.send(JSON.stringify({ error: message }));
+        }
+    }
+
+    private handleSocketError(error: Error): void {
+        console.error('[AGENT-WS] Error en socket:', error);
+    }
+
+    private handleServerListening(): void {
+        console.log(`[AGENT-WS] Echo server escuchando en ws://${this.host}:${this.port}`);
     }
 }
 
