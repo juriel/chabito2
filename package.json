@@ -2,9 +2,11 @@
   "type": "module",
   "dependencies": {
     "@hapi/boom": "^10.0.1",
+    "@mariozechner/pi-agent-core": "^0.64.0",
     "@mariozechner/pi-ai": "^0.64.0",
     "baileys": "^7.0.0-rc.9",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
     "express": "^5.2.1",
     "node-cache": "^5.1.2",
     "pino": "^10.3.1",
