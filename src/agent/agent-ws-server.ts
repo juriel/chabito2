@@ -12,7 +12,7 @@ interface ConversationSnapshot {
     peer_nickname: string;
 }
 
-function isChatMessageDto(payload: unknown): payload is ChatMessageDto {
+export function isChatMessageDto(payload: unknown): payload is ChatMessageDto {
     if (!payload || typeof payload !== 'object') {
         return false;
     }
@@ -245,82 +245,4 @@ export class AgentWebSocketServer {
 export interface AgentMessageStream {
     close: () => void;
     opened: Promise<void>;
-}
-
-export function subscribeToAgentMessages(
-    payload: ChatMessageDto,
-    onMessage: (message: ChatMessageDto) => void,
-    serverUrl = process.env.AGENT_WS_URL || `ws://127.0.0.1:${process.env.AGENT_WS_PORT || 8081}`
-): AgentMessageStream {
-    const ws = new WebSocket(serverUrl);
-    let isOpen = false;
-
-    const opened = new Promise<void>((resolve, reject) => {
-        ws.once('open', () => {
-            isOpen = true;
-            ws.send(JSON.stringify(payload));
-            resolve();
-        });
-
-        ws.once('error', () => {
-            reject(new Error(`No fue posible conectar con el servidor ${serverUrl}`));
-        });
-    });
-
-    ws.on('error', (error) => {
-        if (!isOpen) {
-            return;
-        }
-
-        console.error('[AGENT-WS] Error en stream cliente:', error);
-    });
-
-    ws.on('message', (data: RawData) => {
-        try {
-            const rawText = typeof data === 'string' ? data : data.toString('utf8');
-            const parsed = JSON.parse(rawText) as unknown;
-
-            if (!isChatMessageDto(parsed)) {
-                throw new Error('El servidor no devolvio un ChatMessageDto valido');
-            }
-
-            onMessage(parsed);
-        } catch (error) {
-            console.error('[AGENT-WS] Error procesando mensaje de stream:', error);
-        }
-    });
-
-    return {
-        close: () => {
-            ws.close();
-        },
-        opened
-    };
-}
-
-export async function sendChatMessageToAgent(
-    payload: ChatMessageDto,
-    serverUrl = process.env.AGENT_WS_URL || `ws://127.0.0.1:${process.env.AGENT_WS_PORT || 8081}`
-): Promise<ChatMessageDto> {
-    return await new Promise<ChatMessageDto>((resolve, reject) => {
-        let settled = false;
-        const stream = subscribeToAgentMessages(
-            payload,
-            (message) => {
-                settled = true;
-                stream.close();
-                resolve(message);
-            },
-            serverUrl
-        );
-
-        stream.opened.catch((error) => {
-            if (settled) {
-                return;
-            }
-
-            settled = true;
-            reject(error);
-        });
-    });
 }

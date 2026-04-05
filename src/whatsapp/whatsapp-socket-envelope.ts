@@ -15,19 +15,27 @@ import type {
 } from 'baileys';
 import NodeCache from 'node-cache';
 import { Boom } from '@hapi/boom';
+import WebSocket, { type RawData } from 'ws';
 import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
-import { sendChatMessageToAgent } from '../agent/agent-ws-server.ts';
+import { isChatMessageDto } from '../agent/agent-ws-server.ts';
 
 export class WhatsappSocketEnvelope {
     private static readonly AUTH_INFO_DIR = 'auth_info_baileys';
 
     public uuid: string;
-    public sock?: WASocket;
+    public waSocket?: WASocket;
+    public wsSocket: WebSocket | undefined;
     public qr?: string;
     public connectionState: 'connecting' | 'open' | 'close' | 'undefined' = 'undefined';
-    public lastDisconnect?: any;
+    public lastDisconnect?: unknown;
+    public get sock(): WASocket | undefined {
+        return this.waSocket;
+    }
 
-    private groupCache: NodeCache;
+    private readonly groupCache: NodeCache;
+    private readonly pendingAgentMessages: ChatMessageDto[] = [];
+    private agentSocketReconnectTimeout: NodeJS.Timeout | undefined;
+    private isAgentSocketOpen = false;
 
     constructor(uuid: string) {
         this.uuid = uuid;
@@ -35,11 +43,13 @@ export class WhatsappSocketEnvelope {
     }
 
     public async connect(): Promise<void> {
+        this.connectToAgentWebSocket();
+
         const { state, saveCreds } = await useMultiFileAuthState(this.getSessionAuthPath());
         const { version, isLatest } = await fetchLatestBaileysVersion();
         console.log(`Using WA v${version.join('.')}, isLatest: ${isLatest}`);
 
-        this.sock = makeWASocket({
+        this.waSocket = makeWASocket({
             version,
             auth: state,
             browser: Browsers.macOS('Desktop'),
@@ -48,17 +58,99 @@ export class WhatsappSocketEnvelope {
         });
 
         this.setupEvents();
-        this.sock.ev.on('creds.update', saveCreds);
+        this.waSocket.ev.on('creds.update', saveCreds);
+    }
+
+    private connectToAgentWebSocket(): void {
+        if (this.wsSocket && (this.wsSocket.readyState === WebSocket.OPEN || this.wsSocket.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+
+        const serverUrl = process.env.AGENT_WS_URL || `ws://127.0.0.1:${process.env.AGENT_WS_PORT || 8081}`;
+        const ws = new WebSocket(serverUrl);
+        this.wsSocket = ws;
+
+        ws.on('open', () => {
+            this.isAgentSocketOpen = true;
+            console.log(`[AGENT-WS] Cliente WhatsApp conectado a ${serverUrl}`);
+            this.flushPendingAgentMessages();
+        });
+
+        ws.on('message', (data: RawData) => {
+            void this.handleAgentSocketMessage(data);
+        });
+
+        ws.on('close', () => {
+            this.isAgentSocketOpen = false;
+            this.wsSocket = undefined;
+            this.scheduleAgentSocketReconnect();
+        });
+
+        ws.on('error', (error: Error) => {
+            this.isAgentSocketOpen = false;
+            console.error('[AGENT-WS] Error en socket cliente de WhatsApp:', error);
+        });
+    }
+
+    private scheduleAgentSocketReconnect(): void {
+        if (this.agentSocketReconnectTimeout) {
+            return;
+        }
+
+        this.agentSocketReconnectTimeout = setTimeout(() => {
+            this.agentSocketReconnectTimeout = undefined;
+            this.connectToAgentWebSocket();
+        }, 2000);
+    }
+
+    private async handleAgentSocketMessage(data: RawData): Promise<void> {
+        try {
+            const rawText = typeof data === 'string' ? data : data.toString('utf8');
+            const parsed = JSON.parse(rawText) as unknown;
+
+            if (!isChatMessageDto(parsed)) {
+                throw new Error('El servidor no devolvio un ChatMessageDto valido');
+            }
+
+            if (parsed.direction !== 'out' || parsed.bot_session !== this.uuid) {
+                return;
+            }
+
+            await this.waSocket?.sendMessage(parsed.peer_id, { text: parsed.text });
+        } catch (error) {
+            console.error('[AGENT-WS] Error procesando mensaje del agente:', error);
+        }
+    }
+
+    private flushPendingAgentMessages(): void {
+        while (this.pendingAgentMessages.length > 0) {
+            const message = this.pendingAgentMessages.shift();
+            if (!message) {
+                continue;
+            }
+
+            this.sendMessageToAgentSocket(message);
+        }
+    }
+
+    private sendMessageToAgentSocket(message: ChatMessageDto): void {
+        if (!this.wsSocket || !this.isAgentSocketOpen) {
+            this.pendingAgentMessages.push(message);
+            this.connectToAgentWebSocket();
+            return;
+        }
+
+        this.wsSocket.send(JSON.stringify(message));
     }
 
     private setupEvents(): void {
-        if (!this.sock) return;
+        if (!this.waSocket) return;
 
-        this.sock.ev.on('messages.upsert', async (m: BaileysEventMap['messages.upsert']) => {
+        this.waSocket.ev.on('messages.upsert', async (m: BaileysEventMap['messages.upsert']) => {
             await this.handleMessagesUpsert(m);
         });
 
-        this.sock.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
+        this.waSocket.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
             await this.handleConnectionUpdate(update);
         });
     }
@@ -75,9 +167,7 @@ export class WhatsappSocketEnvelope {
 
         if (jid && !msg.key.fromMe && text.trim().length > 0) {
             const dto = this.toChatMessageDto(msg, text, jid);
-            const echoedMessage = await sendChatMessageToAgent(dto);
-
-            await this.sock?.sendMessage(jid, { text: echoedMessage.text });
+            this.sendMessageToAgentSocket(dto);
         }
     }
 
@@ -116,10 +206,10 @@ export class WhatsappSocketEnvelope {
         }
 
         if (this.connectionState === 'close') {
-            const statusCode = (this.lastDisconnect?.error as Boom)?.output?.statusCode;
+            const statusCode = (this.lastDisconnect as { error?: Boom } | undefined)?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            console.log('❌ Conexión cerrada debido a: ', this.lastDisconnect?.error?.message || this.lastDisconnect?.error);
+            console.log('❌ Conexión cerrada debido a: ', (this.lastDisconnect as { error?: { message?: string } } | undefined)?.error?.message || this.lastDisconnect);
             console.log('🔄 ¿Reconectar?: ', shouldReconnect);
 
             if (shouldReconnect) {
@@ -141,6 +231,9 @@ export class WhatsappSocketEnvelope {
         const sessionAuthPath = this.getSessionAuthPath();
         await rm(sessionAuthPath, { recursive: true, force: true });
         delete this.qr;
-        delete this.sock;
+        delete this.waSocket;
+        this.wsSocket?.close();
+        this.wsSocket = undefined;
+        this.isAgentSocketOpen = false;
     }
 }
