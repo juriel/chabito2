@@ -4,6 +4,14 @@ import { AgentsMap } from './agents-map.ts';
 import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 import type { AiAgentResponseEvent } from './ai-agent.ts';
 
+interface ConversationSnapshot {
+    bot_session: string;
+    agent_id: string;
+    agent_nickname: string;
+    peer_id: string;
+    peer_nickname: string;
+}
+
 function isChatMessageDto(payload: unknown): payload is ChatMessageDto {
     if (!payload || typeof payload !== 'object') {
         return false;
@@ -27,17 +35,13 @@ export class AgentWebSocketServer {
     private wsServer?: WebSocketServer;
     private readonly agentsMap = AgentsMap.getInstance();
     private readonly conversationSockets = new Map<string, Set<WebSocket>>();
-    private readonly conversationContext = new Map<string, ChatMessageDto>();
-    private readonly subscribedConversations = new Set<string>();
+    private readonly conversationSnapshots = new Map<string, ConversationSnapshot>();
+    private readonly conversationUnsubscribers = new Map<string, () => void>();
 
     constructor(
         private readonly port = Number(process.env.AGENT_WS_PORT || 8081),
         private readonly host = process.env.AGENT_WS_HOST || '0.0.0.0'
-    ) {
-        this.handleHttpRequest = this.handleHttpRequest.bind(this);
-        this.handleConnection = this.handleConnection.bind(this);
-        this.handleServerListening = this.handleServerListening.bind(this);
-    }
+    ) {}
 
     public start(): void {
         if (this.server) {
@@ -46,81 +50,107 @@ export class AgentWebSocketServer {
 
         this.server = createServer(this.handleHttpRequest);
         this.wsServer = new WebSocketServer({ server: this.server });
-        this.wsServer.on('connection', this.handleConnection);
-
-        this.server.listen(this.port, this.host, this.handleServerListening);
+        this.wsServer.on("connection", this.handleConnection.bind(this));
+        this.server.listen(this.port, this.host, this.handleServerListening.bind(this));
     }
 
-    private handleHttpRequest(_req: unknown, res: { writeHead: (statusCode: number, headers: Record<string, string>) => void; end: (body: string) => void }): void {
+    private readonly handleHttpRequest = (_req: unknown, res: { writeHead: (statusCode: number, headers: Record<string, string>) => void; end: (body: string) => void }): void => {
         res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({
             service: 'agent-ws-server',
             status: 'ok',
             websocket_url: `ws://${this.host}:${this.port}`
         }));
-    }
+    };
 
-    private handleConnection(socket: WebSocket): void {
-        socket.on('message', this.handleSocketMessage.bind(this, socket));
-        socket.on('error', this.handleSocketError.bind(this));
-        socket.on('close', this.handleSocketClose.bind(this, socket));
-    }
+    private readonly handleConnection = (socket: WebSocket): void => {
+        socket.on("message",this.handleSocketMessage.bind(this, socket));
+        socket.on("error", this.handleSocketError.bind(this));
+        socket.on("close", this.handleSocketClose.bind(this, socket));
+       
+    };
 
     private async handleSocketMessage(socket: WebSocket, data: RawData): Promise<void> {
-        try {
-            const rawText = typeof data === 'string' ? data : data.toString('utf8');
-            const parsed = JSON.parse(rawText) as unknown;
+        let message: ChatMessageDto | undefined;
 
-            if (!isChatMessageDto(parsed)) {
-                throw new Error('Payload recibido no coincide con ChatMessageDto');
+        try {
+            message = this.parseChatMessageDto(data);
+            console.log('[AGENT-WS] DTO recibido:', message);
+            this.registerSocketForConversation(socket, message);
+            await this.dispatchMessageToAgent(message);
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[AGENT-WS] Error procesando mensaje:', error);
+
+            if (message) {
+                this.sendToSocket(socket, this.createErrorResponseDto(message, errorMessage));
+                return;
             }
 
-            console.log('[AGENT-WS] DTO recibido:', parsed);
-            this.registerConversationSocket(socket, parsed);
-            void this.dispatchMessageToAgent(parsed);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.error('[AGENT-WS] Error procesando mensaje:', error);
-            socket.send(JSON.stringify(this.createErrorResponseDto(parsedIfChatMessage(data), message)));
+            this.sendToSocket(socket, this.createErrorResponseDto(undefined, errorMessage));
         }
     }
 
-    private handleSocketError(error: Error): void {
+    private readonly handleSocketError = (error: Error): void => {
         console.error('[AGENT-WS] Error en socket:', error);
-    }
+    };
 
     private handleSocketClose(socket: WebSocket): void {
-        for (const sockets of this.conversationSockets.values()) {
-            sockets.delete(socket);
+        for (const [conversationKey, sockets] of this.conversationSockets.entries()) {
+            if (!sockets.delete(socket)) {
+                continue;
+            }
+
+            if (sockets.size === 0) {
+                this.releaseConversation(conversationKey);
+            }
         }
     }
 
-    private handleServerListening(): void {
+    private readonly handleServerListening = (): void => {
         console.log(`[AGENT-WS] Servidor PI Agent Core escuchando en ws://${this.host}:${this.port}`);
-    }
+    };
 
     private getConversationKey(message: ChatMessageDto): string {
         return `${message.bot_session}:${message.peer_id}`;
     }
 
-    private registerConversationSocket(socket: WebSocket, message: ChatMessageDto): void {
+    private parseChatMessageDto(data: RawData): ChatMessageDto {
+        const rawText = typeof data === 'string' ? data : data.toString('utf8');
+        const parsed = JSON.parse(rawText) as unknown;
+
+        if (!isChatMessageDto(parsed)) {
+            throw new Error('Payload recibido no coincide con ChatMessageDto');
+        }
+
+        return parsed;
+    }
+
+    private registerSocketForConversation(socket: WebSocket, message: ChatMessageDto): void {
         const conversationKey = this.getConversationKey(message);
         const sockets = this.conversationSockets.get(conversationKey) || new Set<WebSocket>();
 
         sockets.add(socket);
         this.conversationSockets.set(conversationKey, sockets);
-        this.conversationContext.set(conversationKey, message);
+        this.conversationSnapshots.set(conversationKey, {
+            bot_session: message.bot_session,
+            agent_id: message.agent_id,
+            agent_nickname: message.agent_nickname,
+            peer_id: message.peer_id,
+            peer_nickname: message.peer_nickname
+        });
+
+        this.ensureConversationSubscribed(conversationKey);
     }
 
     private async dispatchMessageToAgent(message: ChatMessageDto): Promise<void> {
         const conversationKey = this.getConversationKey(message);
         const agent = this.agentsMap.getOrCreate(conversationKey);
-        this.ensureConversationSubscribed(conversationKey);
 
         try {
             await agent.receive(message.text);
         } catch (error) {
-            this.sendToConversation(
+            this.broadcastToConversation(
                 conversationKey,
                 this.createErrorResponseDto(message, error instanceof Error ? error.message : String(error))
             );
@@ -128,50 +158,72 @@ export class AgentWebSocketServer {
     }
 
     private ensureConversationSubscribed(conversationKey: string): void {
-        if (this.subscribedConversations.has(conversationKey)) {
+        if (this.conversationUnsubscribers.has(conversationKey)) {
             return;
         }
 
         const agent = this.agentsMap.getOrCreate(conversationKey);
-        agent.subscribe(this.handleAgentResponse.bind(this, conversationKey));
-        this.subscribedConversations.add(conversationKey);
+        const unsubscribe = agent.subscribe(
+            this.handleAgentResponse.bind(this, conversationKey)
+        );
+
+        this.conversationUnsubscribers.set(conversationKey, unsubscribe);
     }
 
     private handleAgentResponse(conversationKey: string, event: AiAgentResponseEvent): void {
-        const message = this.conversationContext.get(conversationKey);
-        if (!message) {
+        const snapshot = this.conversationSnapshots.get(conversationKey);
+        if (!snapshot) {
             return;
         }
 
-        this.sendToConversation(
+        this.broadcastToConversation(
             conversationKey,
-            this.createOutgoingResponseDto(message, event.text)
+            this.createOutgoingResponseDto(snapshot, event.text)
         );
     }
 
-    private createOutgoingResponseDto(message: ChatMessageDto, responseText: string): ChatMessageDto {
+    private releaseConversation(conversationKey: string): void {
+        this.conversationSockets.delete(conversationKey);
+        this.conversationSnapshots.delete(conversationKey);
+        this.conversationUnsubscribers.get(conversationKey)?.();
+        this.conversationUnsubscribers.delete(conversationKey);
+    }
+
+    private createOutgoingResponseDto(snapshot: ConversationSnapshot, responseText: string): ChatMessageDto {
         return {
-            ...message,
+            ...snapshot,
+            whatsapp_message_id: '',
             direction: 'out',
             timestamp: Date.now(),
-            text: responseText
+            text: responseText,
+            attachments: []
         };
     }
 
-    private sendToConversation(conversationKey: string, payload: ChatMessageDto): void {
+    private broadcastToConversation(conversationKey: string, payload: ChatMessageDto): void {
         const sockets = this.conversationSockets.get(conversationKey);
         if (!sockets) {
             return;
         }
 
         for (const socket of sockets) {
-            if (socket.readyState !== WebSocket.OPEN) {
+            if (!this.sendToSocket(socket, payload)) {
                 sockets.delete(socket);
-                continue;
             }
-
-            socket.send(JSON.stringify(payload));
         }
+
+        if (sockets.size === 0) {
+            this.releaseConversation(conversationKey);
+        }
+    }
+
+    private sendToSocket(socket: WebSocket, payload: ChatMessageDto): boolean {
+        if (socket.readyState !== WebSocket.OPEN) {
+            return false;
+        }
+
+        socket.send(JSON.stringify(payload));
+        return true;
     }
 
     private createErrorResponseDto(message: ChatMessageDto | undefined, errorMessage: string): ChatMessageDto {
@@ -190,14 +242,60 @@ export class AgentWebSocketServer {
     }
 }
 
-function parsedIfChatMessage(data: RawData): ChatMessageDto | undefined {
-    try {
-        const rawText = typeof data === 'string' ? data : data.toString('utf8');
-        const parsed = JSON.parse(rawText) as unknown;
-        return isChatMessageDto(parsed) ? parsed : undefined;
-    } catch {
-        return undefined;
-    }
+export interface AgentMessageStream {
+    close: () => void;
+    opened: Promise<void>;
+}
+
+export function subscribeToAgentMessages(
+    payload: ChatMessageDto,
+    onMessage: (message: ChatMessageDto) => void,
+    serverUrl = process.env.AGENT_WS_URL || `ws://127.0.0.1:${process.env.AGENT_WS_PORT || 8081}`
+): AgentMessageStream {
+    const ws = new WebSocket(serverUrl);
+    let isOpen = false;
+
+    const opened = new Promise<void>((resolve, reject) => {
+        ws.once('open', () => {
+            isOpen = true;
+            ws.send(JSON.stringify(payload));
+            resolve();
+        });
+
+        ws.once('error', () => {
+            reject(new Error(`No fue posible conectar con el servidor ${serverUrl}`));
+        });
+    });
+
+    ws.on('error', (error) => {
+        if (!isOpen) {
+            return;
+        }
+
+        console.error('[AGENT-WS] Error en stream cliente:', error);
+    });
+
+    ws.on('message', (data: RawData) => {
+        try {
+            const rawText = typeof data === 'string' ? data : data.toString('utf8');
+            const parsed = JSON.parse(rawText) as unknown;
+
+            if (!isChatMessageDto(parsed)) {
+                throw new Error('El servidor no devolvio un ChatMessageDto valido');
+            }
+
+            onMessage(parsed);
+        } catch (error) {
+            console.error('[AGENT-WS] Error procesando mensaje de stream:', error);
+        }
+    });
+
+    return {
+        close: () => {
+            ws.close();
+        },
+        opened
+    };
 }
 
 export async function sendChatMessageToAgent(
@@ -205,31 +303,24 @@ export async function sendChatMessageToAgent(
     serverUrl = process.env.AGENT_WS_URL || `ws://127.0.0.1:${process.env.AGENT_WS_PORT || 8081}`
 ): Promise<ChatMessageDto> {
     return await new Promise<ChatMessageDto>((resolve, reject) => {
-        const ws = new WebSocket(serverUrl);
+        let settled = false;
+        const stream = subscribeToAgentMessages(
+            payload,
+            (message) => {
+                settled = true;
+                stream.close();
+                resolve(message);
+            },
+            serverUrl
+        );
 
-        ws.once('open', () => {
-            ws.send(JSON.stringify(payload));
-        });
-
-        ws.once('message', (data: RawData) => {
-            try {
-                const rawText = typeof data === 'string' ? data : data.toString('utf8');
-                const parsed = JSON.parse(rawText) as unknown;
-
-                if (!isChatMessageDto(parsed)) {
-                    throw new Error('El servidor no devolvio un ChatMessageDto valido');
-                }
-
-                resolve(parsed);
-            } catch (error) {
-                reject(error);
-            } finally {
-                ws.close();
+        stream.opened.catch((error) => {
+            if (settled) {
+                return;
             }
-        });
 
-        ws.once('error', () => {
-            reject(new Error(`No fue posible conectar con el servidor ${serverUrl}`));
+            settled = true;
+            reject(error);
         });
     });
 }
