@@ -2,6 +2,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import WebSocket, { WebSocketServer, type RawData } from 'ws';
 import { AgentsMap } from './agents-map.ts';
 import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
+import type { AiAgentResponseEvent } from './ai-agent.ts';
 
 function isChatMessageDto(payload: unknown): payload is ChatMessageDto {
     if (!payload || typeof payload !== 'object') {
@@ -25,6 +26,9 @@ export class AgentWebSocketServer {
     private server?: HttpServer;
     private wsServer?: WebSocketServer;
     private readonly agentsMap = AgentsMap.getInstance();
+    private readonly conversationSockets = new Map<string, Set<WebSocket>>();
+    private readonly conversationContext = new Map<string, ChatMessageDto>();
+    private readonly subscribedConversations = new Set<string>();
 
     constructor(
         private readonly port = Number(process.env.AGENT_WS_PORT || 8081),
@@ -59,6 +63,7 @@ export class AgentWebSocketServer {
     private handleConnection(socket: WebSocket): void {
         socket.on('message', this.handleSocketMessage.bind(this, socket));
         socket.on('error', this.handleSocketError.bind(this));
+        socket.on('close', this.handleSocketClose.bind(this, socket));
     }
 
     private async handleSocketMessage(socket: WebSocket, data: RawData): Promise<void> {
@@ -71,8 +76,8 @@ export class AgentWebSocketServer {
             }
 
             console.log('[AGENT-WS] DTO recibido:', parsed);
-            const responseDto = await this.generateAgentResponse(parsed);
-            socket.send(JSON.stringify(responseDto));
+            this.registerConversationSocket(socket, parsed);
+            void this.dispatchMessageToAgent(parsed);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error('[AGENT-WS] Error procesando mensaje:', error);
@@ -84,6 +89,12 @@ export class AgentWebSocketServer {
         console.error('[AGENT-WS] Error en socket:', error);
     }
 
+    private handleSocketClose(socket: WebSocket): void {
+        for (const sockets of this.conversationSockets.values()) {
+            sockets.delete(socket);
+        }
+    }
+
     private handleServerListening(): void {
         console.log(`[AGENT-WS] Servidor PI Agent Core escuchando en ws://${this.host}:${this.port}`);
     }
@@ -92,18 +103,75 @@ export class AgentWebSocketServer {
         return `${message.bot_session}:${message.peer_id}`;
     }
 
-    private async generateAgentResponse(message: ChatMessageDto): Promise<ChatMessageDto> {
+    private registerConversationSocket(socket: WebSocket, message: ChatMessageDto): void {
         const conversationKey = this.getConversationKey(message);
-        console.log(`[AGENT-WS] Obteniendo agente para conversationKey=${conversationKey}`);
-        const agent = this.agentsMap.getOrCreate(conversationKey);
-        const responseText = await agent.prompt(message.text);
+        const sockets = this.conversationSockets.get(conversationKey) || new Set<WebSocket>();
 
+        sockets.add(socket);
+        this.conversationSockets.set(conversationKey, sockets);
+        this.conversationContext.set(conversationKey, message);
+    }
+
+    private async dispatchMessageToAgent(message: ChatMessageDto): Promise<void> {
+        const conversationKey = this.getConversationKey(message);
+        const agent = this.agentsMap.getOrCreate(conversationKey);
+        this.ensureConversationSubscribed(conversationKey);
+
+        try {
+            await agent.receive(message.text);
+        } catch (error) {
+            this.sendToConversation(
+                conversationKey,
+                this.createErrorResponseDto(message, error instanceof Error ? error.message : String(error))
+            );
+        }
+    }
+
+    private ensureConversationSubscribed(conversationKey: string): void {
+        if (this.subscribedConversations.has(conversationKey)) {
+            return;
+        }
+
+        const agent = this.agentsMap.getOrCreate(conversationKey);
+        agent.subscribe(this.handleAgentResponse.bind(this, conversationKey));
+        this.subscribedConversations.add(conversationKey);
+    }
+
+    private handleAgentResponse(conversationKey: string, event: AiAgentResponseEvent): void {
+        const message = this.conversationContext.get(conversationKey);
+        if (!message) {
+            return;
+        }
+
+        this.sendToConversation(
+            conversationKey,
+            this.createOutgoingResponseDto(message, event.text)
+        );
+    }
+
+    private createOutgoingResponseDto(message: ChatMessageDto, responseText: string): ChatMessageDto {
         return {
             ...message,
             direction: 'out',
             timestamp: Date.now(),
             text: responseText
         };
+    }
+
+    private sendToConversation(conversationKey: string, payload: ChatMessageDto): void {
+        const sockets = this.conversationSockets.get(conversationKey);
+        if (!sockets) {
+            return;
+        }
+
+        for (const socket of sockets) {
+            if (socket.readyState !== WebSocket.OPEN) {
+                sockets.delete(socket);
+                continue;
+            }
+
+            socket.send(JSON.stringify(payload));
+        }
     }
 
     private createErrorResponseDto(message: ChatMessageDto | undefined, errorMessage: string): ChatMessageDto {

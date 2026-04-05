@@ -1,5 +1,11 @@
-import { Agent, type AgentMessage, type AgentOptions } from '@mariozechner/pi-agent-core';
+import { Agent, type AgentEvent, type AgentMessage, type AgentOptions } from '@mariozechner/pi-agent-core';
 import { getModel, type AssistantMessage } from '@mariozechner/pi-ai';
+
+export interface AiAgentResponseEvent {
+    text: string;
+}
+
+type AiAgentListener = (event: AiAgentResponseEvent) => void | Promise<void>;
 
 export class AiAgentBuilder {
     private modelProvider = (process.env.PI_PROVIDER || 'openai').trim().toLowerCase();
@@ -80,15 +86,68 @@ export class AiAgentBuilder {
 }
 
 export class AiAgent {
-    public constructor(private readonly agent: Agent) {}
+    private readonly listeners = new Set<AiAgentListener>();
+    private processingQueue = Promise.resolve();
+
+    public constructor(private readonly agent: Agent) {
+        this.agent.subscribe(this.handleAgentEvent.bind(this));
+    }
+
+    public subscribe(listener: AiAgentListener): () => void {
+        this.listeners.add(listener);
+        return () => {
+            this.listeners.delete(listener);
+        };
+    }
+
+    public async receive(text: string): Promise<void> {
+        const task = this.processingQueue
+            .then(async () => {
+                await this.agent.prompt(text);
+            });
+
+        this.processingQueue = task.catch((error) => {
+            console.error('[AI-AGENT] Error procesando mensaje en cola:', error);
+        });
+
+        await task;
+    }
 
     public async prompt(text: string): Promise<string> {
+        return await this.generateResponse(text);
+    }
+
+    private handleAgentEvent(event: AgentEvent): void {
+        if (event.type !== 'message_end' || event.message.role !== 'assistant') {
+            return;
+        }
+
+        const responseText = this.extractAssistantText(event.message.content);
+        if (!responseText) {
+            return;
+        }
+
+        void this.notifyListeners({ text: responseText });
+    }
+
+    private async generateResponse(text: string): Promise<string> {
         await this.agent.prompt(text);
         const response = this.getLastAssistantMessage(this.agent.state.messages);
 
         return response
             ? this.extractAssistantText(response.content) || 'No pude generar una respuesta en este momento.'
             : 'No pude generar una respuesta en este momento.';
+    }
+
+    private async notifyListeners(event: AiAgentResponseEvent): Promise<void> {
+        const listeners = [...this.listeners];
+        await Promise.all(listeners.map(async (listener) => {
+            try {
+                await listener(event);
+            } catch (error) {
+                console.error('[AI-AGENT] Error notificando listener:', error);
+            }
+        }));
     }
 
     private getLastAssistantMessage(messages: AgentMessage[]): AssistantMessage | undefined {
