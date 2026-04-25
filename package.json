@@ -28,6 +28,8 @@
   },
   "scripts": {
     "start": "tsx src/index.ts",
-    "build": "tsc"
+    "start:bun": "bun run src/index.ts",
+    "build": "tsc",
+    "build:bun": "bun build ./src/index.ts --outdir ./dist --target bun"
   }
 }

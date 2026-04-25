@@ -5,7 +5,7 @@ Bot de WhatsApp construido con Node.js, [Baileys](https://github.com/WhiskeySock
 ## Requisitos
 
 - Node.js 18 o superior
-- npm o yarn
+- npm, yarn o bun
 
 ## Instalación
 
@@ -19,10 +19,18 @@ Si prefieres Yarn:
 yarn install
 ```
 
+Si prefieres Bun:
+
+```bash
+bun install
+```
+
 ## Scripts
 
 - `npm run start`: ejecuta el proyecto en desarrollo usando `tsx`
+- `bun run start:bun`: ejecuta el proyecto directamente con Bun
 - `npm run build`: compila TypeScript a `dist/`
+- `bun run build:bun`: genera un bundle para Bun en `dist/`
 
 La compilación ya no genera archivos `.map` dentro de los fuentes. Todo el output compilado se escribe en `dist/`.
 
@@ -32,6 +40,18 @@ Para iniciar la API y el servidor WebSocket:
 
 ```bash
 npm run start
+```
+
+Con Bun:
+
+```bash
+bun run start:bun
+```
+
+Si el puerto `8081` ya está ocupado, puedes cambiarlo temporalmente:
+
+```bash
+AGENT_WS_PORT=8082 AGENT_WS_URL=ws://127.0.0.1:8082 bun run start:bun
 ```
 
 Servicios que se levantan al iniciar:
