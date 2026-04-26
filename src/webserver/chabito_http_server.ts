@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import QRCode from 'qrcode';
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { WhatsappSocketEnvelope } from '../whatsapp/whatsapp-socket-envelope.ts';
 import { AgentWebSocketServer } from '../agent/agent-ws-server.ts';
 
@@ -33,6 +33,8 @@ export class ChabitoHttpServer {
     private configureMiddleware(): void {
         this.app.use(cors());
         this.app.use(express.json());
+        this.app.use(express.static('frontend/dist'));
+        this.app.use(express.static('public'));
     }
 
     private configureRoutes(): void {
@@ -71,75 +73,26 @@ export class ChabitoHttpServer {
         }
     }
 
-    private handleIndexRequest(req: express.Request, res: express.Response): void {
+    private async handleIndexRequest(req: express.Request, res: express.Response): Promise<void> {
         const host = req.get('host') || `localhost:${this.port}`;
         const baseUrl = `${req.protocol}://${host}`;
         const exampleUuid = 'demo-session';
 
-        res.type('html').send(`
-            <!DOCTYPE html>
-            <html lang="es">
-            <head>
-                <meta charset="UTF-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>Chabito WS API</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        max-width: 900px;
-                        margin: 40px auto;
-                        padding: 0 16px;
-                        line-height: 1.6;
-                    }
-                    code {
-                        background: #f4f4f4;
-                        padding: 2px 6px;
-                        border-radius: 4px;
-                    }
-                    li { margin-bottom: 10px; }
-                </style>
-            </head>
-            <body>
-                <h1>Chabito WS API</h1>
-                <p>Estos son los endpoints disponibles actualmente.</p>
-                <p>UUID de ejemplo: <code>${exampleUuid}</code></p>
-                <ul>
-                    <li>
-                        <strong>POST</strong> <code>/api/sessions/:uuid</code><br />
-                        Crea una nueva sesion en memoria.<br />
-                        Ejemplo: <a href="${baseUrl}/api/sessions/${exampleUuid}">${baseUrl}/api/sessions/${exampleUuid}</a>
-                    </li>
-                    <li>
-                        <strong>GET</strong> <code>/api/sessions/:uuid/qr</code><br />
-                        Devuelve el estado y el QR crudo si existe.<br />
-                        Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/qr">${baseUrl}/api/sessions/${exampleUuid}/qr</a>
-                    </li>
-                    <li>
-                        <strong>GET</strong> <code>/api/sessions/:uuid/qr/text</code><br />
-                        Devuelve el QR en texto ASCII.<br />
-                        Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/qr/text">${baseUrl}/api/sessions/${exampleUuid}/qr/text</a>
-                    </li>
-                    <li>
-                        <strong>GET</strong> <code>/api/sessions/:uuid/qr/png</code><br />
-                        Devuelve el QR como imagen PNG.<br />
-                        Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/qr/png">${baseUrl}/api/sessions/${exampleUuid}/qr/png</a>
-                    </li>
-                    <li>
-                        <strong>GET</strong> <code>/api/sessions/:uuid/status</code><br />
-                        Devuelve el estado actual de la sesion.<br />
-                        Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/status">${baseUrl}/api/sessions/${exampleUuid}/status</a>
-                    </li>
-                </ul>
-                <p>Nota: el endpoint <code>POST /api/sessions/:uuid</code> debe invocarse con una herramienta como <code>curl</code>, Postman o desde el frontend.</p>
-            </body>
-            </html>
-        `);
+        try {
+            const html = await readFile('public/html/index.html', 'utf-8');
+            const rendered = html.replace(/\$\{baseUrl\}/g, baseUrl).replace(/\$\{exampleUuid\}/g, exampleUuid);
+            res.type('html').send(rendered);
+        } catch (error) {
+            res.status(500).send('Error loading page');
+        }
     }
 
     private async handleCreateSession(req: express.Request, res: express.Response): Promise<void> {
         const uuid = this.getUuidParam(req.params.uuid);
+        console.log(`[API] POST /api/sessions/${uuid}`);
 
         if (this.activeSessions.has(uuid)) {
+            console.warn(`[API] createSession rejected, already exists: ${uuid}`);
             res.status(400).json({
                 error: 'La sesión ya existe en memoria.',
                 state: this.activeSessions.get(uuid)?.connectionState
@@ -166,9 +119,11 @@ export class ChabitoHttpServer {
 
     private handleQrRequest(req: express.Request, res: express.Response): void {
         const uuid = this.getUuidParam(req.params.uuid);
+        console.log(`[API] GET /api/sessions/${uuid}/qr`);
         const bot = this.activeSessions.get(uuid);
 
         if (!bot) {
+            console.warn(`[API] GET /api/sessions/${uuid}/qr missing bot`);
             res.status(404).json({ error: 'La sesión no ha sido instanciada. Utilice POST primero.' });
             return;
         }
@@ -185,9 +140,11 @@ export class ChabitoHttpServer {
 
     private async handleQrTextRequest(req: express.Request, res: express.Response): Promise<void> {
         const uuid = this.getUuidParam(req.params.uuid);
+        console.log(`[API] GET /api/sessions/${uuid}/qr/text`);
         const bot = this.activeSessions.get(uuid);
 
         if (!bot || !bot.qr) {
+            console.warn(`[API] GET /api/sessions/${uuid}/qr/text no qr available`);
             res.status(404).send('No hay código QR pendiente para esta sesión en este momento.');
             return;
         }
@@ -202,9 +159,11 @@ export class ChabitoHttpServer {
 
     private async handleQrPngRequest(req: express.Request, res: express.Response): Promise<void> {
         const uuid = this.getUuidParam(req.params.uuid);
+        console.log(`[API] GET /api/sessions/${uuid}/qr/png`);
         const bot = this.activeSessions.get(uuid);
 
         if (!bot || !bot.qr) {
+            console.warn(`[API] GET /api/sessions/${uuid}/qr/png no qr available`);
             res.status(404).json({ error: 'No hay código QR pendiente para esta sesión en este momento.' });
             return;
         }
@@ -219,9 +178,11 @@ export class ChabitoHttpServer {
 
     private handleStatusRequest(req: express.Request, res: express.Response): void {
         const uuid = this.getUuidParam(req.params.uuid);
+        console.log(`[API] GET /api/sessions/${uuid}/status`);
         const bot = this.activeSessions.get(uuid);
 
         if (!bot) {
+            console.warn(`[API] GET /api/sessions/${uuid}/status missing bot`);
             res.status(404).json({ error: 'No existe sesión con ese identificador.' });
             return;
         }
@@ -230,7 +191,8 @@ export class ChabitoHttpServer {
             uuid,
             state: bot.connectionState,
             hasSocketConnected: !!bot.sock,
-            qrPending: !!bot.qr && bot.connectionState !== 'open'
+            qrPending: !!bot.qr && bot.connectionState !== 'open',
+            qr: bot.qr || null
         });
     }
 

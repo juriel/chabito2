@@ -122,8 +122,17 @@ export class AiAgent {
             return;
         }
 
-        const responseText = this.extractAssistantText(event.message.content);
+        const assistantMsg = event.message as AssistantMessage;
+        
+        if (assistantMsg.stopReason === 'error' && assistantMsg.errorMessage) {
+            console.error('[AI-AGENT] Error from LLM API:', assistantMsg.errorMessage);
+            void this.notifyListeners({ text: `❌ Error del LLM: ${assistantMsg.errorMessage}` });
+            return;
+        }
+
+        const responseText = this.extractAssistantText(assistantMsg.content);
         if (!responseText) {
+            void this.notifyListeners({ text: 'No pude generar una respuesta en este momento.' });
             return;
         }
 

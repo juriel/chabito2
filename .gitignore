@@ -1,14 +1,54 @@
-#comment only for test
-config/
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
 
-
+# Dependency directories
 node_modules/
+jspm_packages/
+
+# Build Output
 dist/
-auth_info_baileys/
-# Environment
+build/
+out/
+
+# Environment Variables
 .env
-npm-debug.log
-yarn-error.log
-yarn-debug.log
-.vscode/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Cache and Temporary Files
+.eslintcache
+.stylelintcache
+.npm
+.parcel-cache
+.cache
+.vite
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Mac / OS generated
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Chabito Specific
+auth_info_baileys/
+config/
+test-agent.ts
+
+# Frontend Generated
+public/css/output.css

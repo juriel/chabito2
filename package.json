@@ -9,6 +9,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.0",
     "express": "^5.2.1",
+    "libsignal": "^2.0.1",
     "node-cache": "^5.1.2",
     "pino": "^10.3.1",
     "qrcode": "^1.5.4",
@@ -18,11 +19,16 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.4",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "@types/qrcode": "^1.5.6",
     "@types/qrcode-terminal": "^0.12.2",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.10",
+    "postcss-cli": "^11.0.1",
+    "tailwindcss": "^4.2.4",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2"
   },
@@ -30,7 +36,11 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "start:bun": "bun run src/index.ts",
+    "frontend:dev": "cd frontend && bun run dev",
+    "frontend:build": "cd frontend && bun run build",
     "build": "tsc",
+    "build:css": "postcss public/css/styles.css -o public/css/output.css",
     "build:bun": "bun build ./src/index.ts --outdir ./dist --target bun"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
