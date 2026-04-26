@@ -1,5 +1,7 @@
-import { AiAgent, AiAgentBuilder } from './ai-agent.ts';
-import { createSendWhatsAppMessageTool } from './whatsapp-tool.ts';
+import { AiAgent } from './ai-agent.ts';
+import { ChatbotInitialSetup } from './chatbot-initial-setup.ts';
+import { ManagerAgentFactory } from './factories/manager-agent-factory.ts';
+import { ClientAgentFactory } from './factories/client-agent-factory.ts';
 
 export class AgentsMap {
     private static instance?: AgentsMap;
@@ -8,8 +10,6 @@ export class AgentsMap {
     /** Keys of agents currently being created (to avoid race conditions). */
     private readonly pending = new Map<string, Promise<AiAgent>>();
 
-    private readonly systemPrompt = process.env.AGENT_SYSTEM_PROMPT
-        || 'Eres Chabito. Responde de forma util, breve y amable por WhatsApp.';
     private readonly modelProvider = (process.env.PI_PROVIDER || 'openai').trim().toLowerCase();
     private readonly modelId = (process.env.PI_MODEL || 'gpt-5-mini').trim();
 
@@ -64,15 +64,17 @@ export class AgentsMap {
             ? conversationKey.slice(separatorIndex + 1)
             : '';
 
-        return new AiAgentBuilder()
-            .withModelProvider(this.modelProvider)
-            .withModelId(this.modelId)
-            .withSystemPrompt(this.systemPrompt)
-            .withSessionId(conversationKey)
-            .withThinkingLevel('off')
-            .withBotSession(botSession)
-            .withPeerId(peerId)
-            .withTool(createSendWhatsAppMessageTool(botSession))
-            .buildAsync();
+        // Determine agent type based on peerId
+        const agentType = await ChatbotInitialSetup.getAgentType(botSession, peerId);
+
+        // Build agent using appropriate factory
+        const factory = agentType === 'manager' ? ManagerAgentFactory : ClientAgentFactory;
+        const builder = factory.create(botSession, peerId, {
+            modelProvider: this.modelProvider,
+            modelId: this.modelId,
+            sessionId: conversationKey
+        });
+
+        return builder.buildAsync();
     }
 }

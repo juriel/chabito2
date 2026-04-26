@@ -1,4 +1,5 @@
 import { StoreFactory } from '../persistence/index.ts';
+import type { AgentType } from './agent-configs.ts';
 
 /**
  * Gestiona la configuración inicial y el comportamiento diferenciado 
@@ -37,10 +38,15 @@ export class ChatbotInitialSetup {
     }
 
     /**
-     * Determina qué prompt usar basándose en el botSession y el peerId (quién escribe).
+     * Determina el tipo de agente basándose en si el peerId es un manager.
      * Si no hay managers registrados, el primero en escribir se convierte en uno.
      */
-    public static async getPromptForPeer(botSession: string, peerId: string): Promise<string> {
+    public static async getAgentType(botSession: string, peerId: string): Promise<AgentType> {
+        // Guard clause: si no hay peerId, devolver client
+        if (!peerId || peerId.trim().length === 0) {
+            return 'client';
+        }
+
         await this.ensureFiles(botSession);
         
         const textStore = StoreFactory.text('./data', botSession);
@@ -58,20 +64,38 @@ export class ChatbotInitialSetup {
         if (managersList.length === 0) {
             console.log(`[SETUP] 🆕 Primer usuario detectado. Promoviendo a ${peerId} como MANAGER de ${botSession}`);
             await textStore.append('managers', `${peerId}\n`);
-            managersList.push(peerId);
+            return 'manager';
         }
 
         // REGLA 2: Reconocer si es un mensaje de sí mismo (o ya está en la lista)
         // Normalmente peerId == ownJid si te escribes a ti mismo
-        const isManager = managersList.some(m => peerId.includes(m.split(':')[0]));
+        const isManager = managersList.some(m => {
+            const managerIdPart = m.split(':')[0];
+            return managerIdPart ? peerId.includes(managerIdPart) : false;
+        });
 
         if (isManager) {
             console.log(`[SETUP] 👑 Acceso administrativo para: ${peerId}`);
+            return 'manager';
+        }
+
+        console.log(`[SETUP] 👤 Acceso de cliente para: ${peerId}`);
+        return 'client';
+    }
+
+    /**
+     * Determina qué prompt usar basándose en el botSession y el peerId (quién escribe).
+     * Este método se mantiene para compatibilidad hacia atrás.
+     */
+    public static async getPromptForPeer(botSession: string, peerId: string): Promise<string> {
+        const agentType = await this.getAgentType(botSession, peerId);
+        const textStore = StoreFactory.text('./data', botSession);
+        
+        if (agentType === 'manager') {
             const adminPrompt = await textStore.load('prompt-admin');
             return adminPrompt.ok ? adminPrompt.value : this.DEFAULT_ADMIN_PROMPT;
         }
 
-        // Si no es manager, devolver el prompt normal
         const externalPrompt = await textStore.load('prompt');
         return externalPrompt.ok ? externalPrompt.value : this.DEFAULT_EXTERNAL_PROMPT;
     }

@@ -2,122 +2,68 @@
 
 ## Resumen del Proyecto
 
-Bot de WhatsApp basado en la librería Baileys que permite gestionar múltiples sesiones simultáneas mediante una API REST y responder automáticamente usando agentes de IA. Cada sesión de WhatsApp se identifica con un UUID y se conecta independientemente a WhatsApp.
+Bot de WhatsApp basado en Baileys que permite gestionar múltiples sesiones simultáneas con API REST y responder automáticamente usando agentes de IA. Cada chatbot tiene configuración personalizada y guarda historial de conversaciones en disco.
 
 ## Stack Tecnológico
 
 - **Runtime**: Node.js 18+ / Bun
 - **Lenguaje**: TypeScript 6.x con strict mode
 - **WhatsApp SDK**: Baileys v7.0.0-rc.9
-- **AI Framework**: @mariozechner/pi-agent-core v0.64.0 + @mariozechner/pi-ai v0.64.0
+- **AI Framework**: @mariozechner/pi-agent-core + @mariozechner/pi-ai
 - **API Server**: Express 5.x
 - **WebSocket**: ws v8.18.3
-- **QR Generation**: qrcode + sharp (para procesamiento de imágenes)
-- **Logging**: pino
-- **Auth Storage**: Sistema de archivos (auth_info_baileys/)
-- **Cache**: node-cache
-- **Validation**: Zod v4.3.6
+- **QR Generation**: qrcode
+- **Storage**: File-based (propio)
+- **Validation**: Zod
 - **Frontend**: Vite + Bun + Tailwind CSS v4
 
 ## Arquitectura
 
-### Arquitectura de Servicios
-
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      CLIENTE WHATSAPP                        │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ WhatsApp Mobile
-                          │ (QR Code Pairing)
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                WhatsappSocketEnvelope (Baileys)                │
-│         ┌─────────────────────────────────────────┐        │
-│         │  Per-Session WhatsApp Connection          │        │
-│         │  - qr code generation                   │        │
-│         │  - message send/receive               │        │
-│         │  - connection state management       │        │
-│         └─────────────────────────────────────────┘        │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ ChatMessageDto (WebSocket)
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│              AgentWebSocketServer (Puerto 8081)                │
-│         ┌─────────────────────────────────────────┐        │
-│         │  AI Message Router                    │        │
-│         │  - per-conversation agents           │        │
-│         │  - broadcasts responses            │        │
-│         └─────────────────────────────────────────┘        │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ ChatMessageDto (WebSocket)
-                          ▼
-┌────────────────────────────────────────���────────────────────┐
-│                      AiAgent (per-peer)                       │
-│         ┌─────────────────────────────────────────┐        │
-│         │  PI Agent Core                        │        │
-│         │  - LLM integration (multi-provider) │        │
-│         │  - tool execution (WhatsApp send)    │        │
-│         │  - conversation memory              │        │
-│         └─────────────────────────────────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+WhatsApp Mobile → WhatsAppSocketEnvelope → AgentWebSocketServer (8081) → AiAgent
+                        ↓                                ↓
+                 ChatbotInitialSetup           ConversationStore
+                   (data/{bot}/)                 (data/{bot}/)
 ```
 
-### Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 /
 ├── index.ts                      # Entry point
-├── chabito_ws.ts                # Inicializa el servidor HTTP
-├── SPEC.md                     # Este archivo
-├── package.json                 # Dependencias (ESM)
-├── tsconfig.json               # Configuración TypeScript strict
-├── .env                      # Variables de entorno
-├── public/
-│   ├── html/
-│   │   └── index.html        # Documentación de endpoints
-│   └── css/                  # Estilos Tailwind
+├── SPEC.md                      # Documentación
+├── package.json                 # Dependencias ESM
 ├── src/
-│   ├── index.ts             # Entry point - importa chabito_ws
-│   ├── chabito_ws.ts        # Inicializa ChabitoHttpServer
+│   ├── index.ts               # Entry point
+│   ├── chabito_ws.ts           # Inicializa servidor
 │   ├── dto/
 │   │   └── chat-message-dto.ts
 │   ├── webserver/
-│   │   └── chabito_http_server.ts    # Servidor HTTP API (puerto 3000)
+│   │   └── chabito_http_server.ts    # Express (3000)
 │   ├── whatsapp/
-│   │   └── whatsapp-socket-envelope.ts  # Clase WhatsApp + Baileys
-│   └── agent/
-│       ├── ai-agent.ts            # Wrapper del PI Agent
-│       ├── agent-ws-server.ts     # Servidor WebSocket IA (puerto 8081)
-│       ├── whatsapp-tool.ts       # Tool para enviar mensajes WhatsApp
-│       └── agents-map.ts         # Mapa de agentes por conversación
-├── frontend/
-│   ├── src/
-│   │   ├── app.ts
-│   │   ├── main.ts
-│   │   ├── types.ts
-│   │   ├── global.css
-│   │   └── pages/
-│   │       ├── landing/
-│   │       │   └── landing-page.ts
-│   │       └── chatbots/
-│   │           ├── chatbots-page.ts
-│   │           ├── chatbot-list.ts
-│   │           ├── chatbot-card.ts
-│   │           └── chatbot-creation-box.ts
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── tsconfig.json
-└── auth_info_baileys/          # Credenciales de sesión (gitignored)
-    └── {uuid}/               # Una carpeta por sesión
-        └── ...
+│   │   ├── whatsapp-socket-envelope.ts
+│   │   └── baileys-storage-cleanup.ts
+│   ├── agent/
+│   │   ├── ai-agent.ts            # AiAgent wrapper
+│   │   ├── agent-ws-server.ts     # WS server (8081)
+│   │   ├── agents-map.ts         # Agents singleton
+│   │   ├── whatsapp-tool.ts     # Send message tool
+│   │   ├── chatbot-initial-setup.ts  # Bot config
+│   │   └── conversation-store.ts # Chat history
+│   └── persistence/
+│       ├── index.ts             # Public API
+│       ├── types.ts             # Interfaces
+│       ├── file-storage-provider.ts
+│       ├── json-store.ts
+│       └── text-store.ts
+├── data/                       # Datos (gitignored)
+│   └── {botSession}/
+│       ├── prompt.txt
+│       ├── prompt-admin.txt
+│       ├── managers.txt
+│       └── conversation-{peerId}.json
+└── auth_info_baileys/           # Credenciales WA
 ```
-
-### Servidores
-
-| Servicio | Puerto Default | Protocolo | Descripción |
-|----------|----------------|-----------|-------------|
-| HTTP API | 3000 | HTTP | API REST para gestión de sesiones |
-| WebSocket IA | 8081 | WS | Servidor WebSocket para mensajes de IA |
 
 ---
 
@@ -125,179 +71,100 @@ Bot de WhatsApp basado en la librería Baileys que permite gestionar múltiples 
 
 ### 1. `WhatsappSocketEnvelope`
 
-**Ubicación:** `src/whatsapp/whatsapp-socket-envelope.ts`
+Gestiona la conexión WhatsApp via Baileys.
 
 ```typescript
-export class WhatsappSocketEnvelope {
+class WhatsappSocketEnvelope {
     uuid: string;
     waSocket?: WASocket;
-    wsSocket: WebSocket | undefined;  // Conexión al AgentWebSocketServer
+    wsSocket: WebSocket | undefined;
     qr?: string;
     connectionState: 'connecting' | 'open' | 'close' | 'undefined';
-    lastDisconnect?: unknown;
 }
 ```
-
-**Métodos públicos:**
-- `constructor(uuid: string)` - Inicializa la sesión
-- `async connect()` - Conecta a WhatsApp usando auth multi-file
-- `async sendTextMessage(to: string, text: string)` - Envía mensajes de texto
-
-**Eventos manejados:**
-- `creds.update` - Guarda credenciales automáticamente
-- `messages.upsert` - Procesa mensajes entrantes y reenvía al Agent WebSocket Server
-- `connection.update` - Gestiona estados de conexión y QR
 
 ### 2. `ChabitoHttpServer`
 
-**Ubicación:** `src/webserver/chabito_http_server.ts`
-
-Servidor Express que expone la API REST para gestión de sesiones WhatsApp.
-
-**Endpoints HTTP:**
-
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/` | Página HTML con documentación |
-| POST | `/api/sessions/:uuid` | Crea nueva instancia de sesión |
-| GET | `/api/sessions` | Lista sesiones activas |
-| GET | `/api/sessions/:uuid/qr` | Estado + QR en JSON |
-| GET | `/api/sessions/:uuid/qr/text` | QR en formato ASCII |
-| GET | `/api/sessions/:uuid/qr/png` | QR como imagen PNG |
-| GET | `/api/sessions/:uuid/status` | Estado actual de la sesión |
-| POST | `/api/sessions/:uuid/send` | Envía mensaje WhatsApp |
+Servidor Express (puerto 3000).
 
 ### 3. `AgentWebSocketServer`
 
-**Ubicación:** `src/agent/agent-ws-server.ts`
+Servidor WebSocket (puerto 8081) que routing mensajes a agentes por conversación.
 
-Servidor WebSocket que recibe mensajes de WhatsApp y los distribuye a los agentes de IA correspondientes.
+### 4. `AiAgent` / `AiAgentBuilder`
 
-**Protocolo de Mensajes:**
+Wrapper sobre PI Agent Core con tools.
 
-- **Entrada:** ChatMessageDto con `direction: 'in'`
-- **Salida:** ChatMessageDto con `direction: 'out'`
+Proveedores: openai, anthropic, google, groq, xai, openrouter
 
-**Gestión de Conversación:**
+### 5. `ChatbotInitialSetup`
 
-- Una clave de conversación = `{bot_session}:{peer_id}`
-- Un AiAgent por conversación
-- Múltiples WebSockets por conversación (broadcast)
+Gestión de configuración por bot.
 
-### 4. `AiAgent` y `AiAgentBuilder`
-
-**Ubicación:** `src/agent/ai-agent.ts`
-
-Wrapper sobre `@mariozechner/pi-agent-core` para gestionar agentes de IA con herramientas.
-
-**Proveedores LLM Soportados:**
-
-- openai
-- anthropic
-- google / google_vertex
-- groq
-- xai
-- openrouter
-
-### 5. `WhatsAppTool`
-
-**Ubicación:** `src/agent/whatsapp-tool.ts`
-
-Herramienta que permite al agente de IA enviar mensajes WhatsApp.
-
-```typescript
-const tool = createSendWhatsAppMessageTool(botSession);
-await tool.execute(toolCallId, { phoneNumber: '+573001234567', message: 'Hola!' });
-```
+- `prompt.txt`: Prompt público
+- `prompt-admin.txt`: Prompt para admins
+- `managers.txt`: Lista de JIDs admins
 
 ### 6. `AgentsMap`
 
-**Ubicación:** `src/agent/agents-map.ts`
+Singleton que crea agentes async por `conversationKey` = `botSession:peerId`
 
-Mapa singleton que gestiona agentes por clave de conversación (`bot_session:peer_id`).
+### 7. `ConversationStore`
+
+Historial de conversaciones guardado en `data/{botSession}/conversation-{peerId}.json`
 
 ---
 
-## DTO: ChatMessageDto
+## Persistence Layer
+
+### TextStore
+
+Archivos `.txt` (prompts, managers).
 
 ```typescript
-interface ChatMessageDto {
-    bot_session: string;
-    agent_id: string;
-    agent_nickname: string;
-    peer_id: string;
-    peer_nickname: string;
-    whatsapp_message_id: string;
-    direction: 'in' | 'out';
-    timestamp: number;
-    text: string;
-    attachments: ChatMessageAttachmentDto[];
-}
+const store = new TextStore('./data', 'botSession');
+await store.save('prompt', 'Eres un asistente...');
+await store.append('managers', '573001234567@s.whatsapp.net\n');
+```
+
+### JsonStore
+
+Archivos JSON (conversaciones).
+
+```typescript
+const store = new JsonStore(provider, deserializer);
+await store.save('id', entity);
+```
+
+### FileStorageProvider
+
+```typescript
+const provider = new FileStorageProvider('./data', 'conversations');
+// → data/conversations/<key>.json
 ```
 
 ---
 
 ## Estados de Conexión
 
-- `undefined` - Sesión no iniciada
-- `connecting` - Intentando conectar
-- `open` - Conectado y listo
-- `close` - Desconectado
+- `undefined` → Sesión no iniciada
+- `connecting` → Intentando conectar
+- `open` → Conectado y listo
+- `close` → Desconectado (auto-reconnect excepto loggedOut)
 
 ---
 
-## Convenciones de Código
+## API Endpoints
 
-### TypeScript
-
-- `strict: true` habilitado
-- `verbatimModuleSyntax: true` - imports/exports explícitos
-- `module: "nodenext"` - ESM modules
-- Extensiones `.ts` en imports (omitir `.js` en runtime)
-
-### Archivos
-
-- Extensión `.ts` para código TypeScript
-- Usar `async/await` en lugar de `.then()`/`.catch()`
-- Tipado estricto de errores con `@hapi/boom`
-
-### Logging
-
-- Usar `console.log` / `console.error` para logs
-- Prefijos de contexto: `[API]`, `[AGENT-WS]`, `[BAILEYS]`, `[TOOL]`, `[AI-AGENT]`
-
----
-
-## Ejecución
-
-### Instalación
-
-```bash
-yarn install
-# o
-bun install
-```
-
-### Iniciar Servidor
-
-```bash
-yarn start
-# o
-bun run start:bun
-```
-
-### Iniciar Frontend
-
-```bash
-cd frontend && bun run dev
-```
-
-### Build
-
-```bash
-yarn build                    # Compila TypeScript
-cd frontend && bun run build  # Compila Frontend
-```
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/` | Página HTML |
+| POST | `/api/sessions/:uuid` | Crear sesión |
+| GET | `/api/sessions` | Listar sesiones |
+| GET | `/api/sessions/:uuid/qr` | Estado + QR |
+| GET | `/api/sessions/:uuid/qr/png` | QR PNG |
+| GET | `/api/sessions/:uuid/status` | Estado |
+| POST | `/api/sessions/:uuid/send` | Enviar mensaje |
 
 ---
 
@@ -305,41 +172,24 @@ cd frontend && bun run build  # Compila Frontend
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `PORT` | 3000 | Puerto del servidor HTTP |
-| `AGENT_WS_HOST` | 0.0.0.0 | Host del servidor WebSocket IA |
-| `AGENT_WS_PORT` | 8081 | Puerto del servidor WebSocket IA |
-| `AGENT_WS_URL` | ws://127.0.0.1:8081 | URL del WebSocket para cliente interno |
-| `PI_PROVIDER` | openai | Proveedor de IA |
-| `PI_MODEL` | gpt-5-mini | Modelo de IA |
-| `AGENT_SYSTEM_PROMPT` | "Eres Chabito..." | Prompt del sistema |
-
-### API Keys por Proveedor
-
-| Proveedor | Variable de Entorno |
-|----------|---------------------|
-| OpenAI | `OPENAI_API_KEY` |
-| Anthropic | `ANTHROPIC_API_KEY` |
-| Google | `GEMINI_API_KEY` |
-| Groq | `GROQ_API_KEY` |
-| xAI | `XAI_API_KEY` |
-| OpenRouter | `OPENROUTER_API_KEY` |
+| PORT | 3000 | HTTP API port |
+| AGENT_WS_PORT | 8081 | WS port |
+| PI_PROVIDER | openai | AI provider |
+| PI_MODEL | gpt-5-mini | AI model |
 
 ---
 
-## Autenticación
+## Convenciones
 
-1. Primera ejecución genera QR en terminal
-2. Escanear con WhatsApp > Dispositivos vinculados
-3. Sesión guardada en `auth_info_baileys/{uuid}/`
-4. Siguientes ejecuciones reutilizan sesión automáticamente
+- ESM: imports con `.js` extension
+- Strict TypeScript
+- Logging con prefijos: `[API]`, `[AGENT-WS]`, `[BAILEYS]`, `[TOOL]`, `[AI-AGENT]`, `[SETUP]`
 
 ---
 
 ## Notas Importantes
 
-- Las sesiones se restauran automáticamente al iniciar el servidor
-- Múltiples sesiones WhatsApp pueden correr simultáneamente
-- Múltiples agentes de IA (uno por conversación)
-- La carpeta `auth_info_baileys/` está en `.gitignore`
-- Si la sesión se cierra (no por `loggedOut`), se reconecta automáticamente
-- El agente puede usar la herramienta `send_whatsapp_message` para contactar terceros
+- `data/` y `auth_info_baileys/` en `.gitignore`
+- Primer usuario se promueve a manager automáticamente
+- Cada conversación tiene su propio agente e historial
+- Múltiples sesiones WhatsApp simultáneas
