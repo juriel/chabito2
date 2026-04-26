@@ -1,5 +1,6 @@
 import { AiAgent, AiAgentBuilder } from './ai-agent.ts';
 import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
+import { createSendWhatsAppMessageTool } from './whatsapp-tool.ts';
 
 export class AgentsMap {
     private static instance?: AgentsMap;
@@ -26,6 +27,7 @@ export class AgentsMap {
         if (current) {
             return current;
         }
+        const botSession = conversationKey.split(':')[0];
 
         const agent = new AiAgentBuilder()
             .withModelProvider(this.modelProvider)
@@ -33,6 +35,7 @@ export class AgentsMap {
             .withSystemPrompt(this.systemPrompt)
             .withSessionId(conversationKey)
             .withThinkingLevel('off')
+            .withTool(createSendWhatsAppMessageTool(botSession || ''))
             .build();
 
         this.agents.set(conversationKey, agent);

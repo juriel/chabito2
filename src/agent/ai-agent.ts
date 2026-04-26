@@ -1,4 +1,4 @@
-import { Agent, type AgentEvent, type AgentMessage, type AgentOptions } from '@mariozechner/pi-agent-core';
+import { Agent, type AgentEvent, type AgentMessage, type AgentOptions, type AgentTool } from '@mariozechner/pi-agent-core';
 import { getModel, type AssistantMessage } from '@mariozechner/pi-ai';
 
 export interface AiAgentResponseEvent {
@@ -13,6 +13,12 @@ export class AiAgentBuilder {
     private systemPrompt = process.env.AGENT_SYSTEM_PROMPT || 'Eres Chabito. Responde de forma util, breve y amable por WhatsApp.';
     private sessionId?: string;
     private thinkingLevel: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' = 'off';
+    private tools: AgentTool<any>[] = [];
+
+    public withTool(tool: AgentTool<any>): AiAgentBuilder {
+        this.tools.push(tool);
+        return this;
+    }
 
     public withModelProvider(modelProvider: string): AiAgentBuilder {
         this.modelProvider = modelProvider.trim().toLowerCase();
@@ -46,7 +52,7 @@ export class AiAgentBuilder {
                 systemPrompt: this.systemPrompt,
                 model,
                 messages: [],
-                tools: [],
+                tools: this.tools,
                 thinkingLevel: this.thinkingLevel
             },
             getApiKey: this.getApiKeyForProvider.bind(this)
@@ -123,7 +129,14 @@ export class AiAgent {
         }
 
         const assistantMsg = event.message as AssistantMessage;
-        
+
+        // Skip intermediate tool-use turns — the agent is still working.
+        // The final text response will arrive in a subsequent message_end with stopReason 'stop'.
+        if (assistantMsg.stopReason === 'toolUse') {
+            console.log('[AI-AGENT] Tool use turn, esperando respuesta final...');
+            return;
+        }
+
         if (assistantMsg.stopReason === 'error' && assistantMsg.errorMessage) {
             console.error('[AI-AGENT] Error from LLM API:', assistantMsg.errorMessage);
             void this.notifyListeners({ text: `❌ Error del LLM: ${assistantMsg.errorMessage}` });
@@ -132,7 +145,9 @@ export class AiAgent {
 
         const responseText = this.extractAssistantText(assistantMsg.content);
         if (!responseText) {
-            void this.notifyListeners({ text: 'No pude generar una respuesta en este momento.' });
+            // No text to send — happens when the model emits only thinking blocks.
+            // Silently ignore to avoid sending an unhelpful fallback message.
+            console.warn('[AI-AGENT] mensaje_end sin texto (thinking only?), ignorando.');
             return;
         }
 

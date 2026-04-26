@@ -143,6 +143,18 @@ export class WhatsappSocketEnvelope {
         this.wsSocket.send(JSON.stringify(message));
     }
 
+    public async sendTextMessage(to: string, text: string): Promise<void> {
+        if (!this.waSocket) {
+            throw new Error('El socket de WhatsApp no está conectado');
+        }
+
+        // Sanitize: strip +, spaces, dashes, parentheses so we get a clean E.164 number
+        const cleanNumber = to.replace(/[\s+\-()]/g, '');
+        const jid = cleanNumber.includes('@s.whatsapp.net') ? cleanNumber : `${cleanNumber}@s.whatsapp.net`;
+        await this.waSocket.sendMessage(jid, { text });
+        console.log(`[BAILEYS] Mensaje enviado a tercero desde tool: ${jid}`);
+    }
+
     private setupEvents(): void {
         if (!this.waSocket) return;
 

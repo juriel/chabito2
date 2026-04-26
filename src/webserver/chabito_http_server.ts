@@ -45,6 +45,7 @@ export class ChabitoHttpServer {
         this.app.get('/api/sessions/:uuid/qr/png', this.handleQrPngRequest.bind(this));
         this.app.get('/api/sessions/:uuid/status', this.handleStatusRequest.bind(this));
         this.app.get('/api/sessions', this.handleListSessions.bind(this));
+        this.app.post('/api/sessions/:uuid/send', this.handleSendWhatsAppMessage.bind(this));
     }
 
     private async bootstrapStoredSessions(): Promise<void> {
@@ -115,6 +116,31 @@ export class ChabitoHttpServer {
             });
         } catch (error) {
             res.status(500).json({ error: 'Error del servidor al intentar arrancar', details: String(error) });
+        }
+    }
+
+    private async handleSendWhatsAppMessage(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        const { to, text } = req.body;
+
+        if (!to || !text) {
+            res.status(400).json({ error: 'Faltan parámetros "to" o "text" en el body.' });
+            return;
+        }
+
+        const bot = this.activeSessions.get(uuid);
+        if (!bot) {
+            res.status(404).json({ error: 'La sesión no ha sido instanciada o no existe.' });
+            return;
+        }
+
+        try {
+            await bot.sendTextMessage(String(to), String(text));
+            res.json({ success: true, message: 'Mensaje enviado correctamente' });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[API] Error enviando mensaje desde endpoint para ${uuid}:`, errorMessage);
+            res.status(500).json({ error: 'Error enviando el mensaje', details: errorMessage });
         }
     }
 
