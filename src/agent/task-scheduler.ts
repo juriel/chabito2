@@ -137,23 +137,61 @@ export class TaskScheduler {
     }
 
     private async executeAgentTask(task: BotTask): Promise<void> {
-        try {
-            // Create a temporary manager agent to execute the instruction
-            const builder = ManagerAgentFactory.create(this.botSession, 'system-scheduler', {
-                ...this.modelOptions,
-                sessionId: `sched-${task.id}-${Date.now()}`
-            });
+        const MAX_TURNS = 5;
+        const COMPLETION_MARKER = 'TAREA_COMPLETADA';
 
-            // We don't need to subscribe to the agent because the agent will use TOOLS 
-            // (like send_whatsapp_message) to perform the actual actions.
-            const agent = await builder.buildAsync();
+        try {
+            console.log(`[SCHEDULER] 🤖 Iniciando flujo multi-agente para tarea: ${task.id}`);
+
+            // 1. Crear Agente Ejecutor (con herramientas de manager)
+            const executorBuilder = ManagerAgentFactory.create(this.botSession, 'system-executor', {
+                ...this.modelOptions,
+                sessionId: `exec-${task.id}-${Date.now()}`
+            });
+            const executor = await executorBuilder.buildAsync();
+
+            // 2. Crear Agente Coordinador (sin herramientas, solo supervisión)
+            const coordinatorBuilder = ManagerAgentFactory.create(this.botSession, 'system-coordinator', {
+                ...this.modelOptions,
+                sessionId: `coord-${task.id}-${Date.now()}`
+            });
+            // Modificamos el prompt del coordinador específicamente para esta tarea
+            const coordinator = await coordinatorBuilder.buildAsync();
+            coordinator.agent.state.systemPrompt = `Eres el Coordinador de Tareas de Chabito. 
+Tu misión es asegurar que la siguiente instrucción se cumpla usando al Agente Ejecutor.
+Instrucción original: "${task.instruction}"
+
+Reglas:
+1. Envía órdenes claras al Ejecutor.
+2. Analiza sus respuestas.
+3. Si el Ejecutor termina o el objetivo se cumple, escribe exactamente "${COMPLETION_MARKER}" para finalizar.
+4. Tienes un máximo de ${MAX_TURNS} interacciones.`;
+
+            // 3. Bucle de interacción
+            let lastMessage = `Adelante, inicia la tarea: "${task.instruction}"`;
             
-            // Give the agent the instruction
-            await agent.receive(task.instruction);
-            
-            console.log(`[SCHEDULER] ✅ Instrucción procesada para tarea ${task.id}`);
+            for (let i = 0; i < MAX_TURNS; i++) {
+                console.log(`[SCHEDULER] 🔄 Turno ${i + 1}/${MAX_TURNS} para tarea ${task.id}`);
+
+                // El Coordinador genera la orden
+                const coordinatorOrder = await coordinator.prompt(lastMessage);
+                console.log(`[SCHEDULER] 🗣️ Coordinador: ${coordinatorOrder.substring(0, 50)}...`);
+
+                if (coordinatorOrder.includes(COMPLETION_MARKER)) {
+                    console.log(`[SCHEDULER] ✅ El Coordinador marcó la tarea como completada.`);
+                    break;
+                }
+
+                // El Ejecutor procesa la orden (aquí es donde se usan las TOOLS)
+                const executorResponse = await executor.prompt(coordinatorOrder);
+                console.log(`[SCHEDULER] ⚙️ Ejecutor respondió.`);
+
+                lastMessage = `Respuesta del Ejecutor: ${executorResponse}`;
+            }
+
+            console.log(`[SCHEDULER] 🏁 Tarea ${task.id} finalizada.`);
         } catch (error) {
-            console.error(`[SCHEDULER] ❌ Error en ejecución de agente para tarea ${task.id}:`, error);
+            console.error(`[SCHEDULER] ❌ Error en flujo multi-agente para tarea ${task.id}:`, error);
         }
     }
 }
