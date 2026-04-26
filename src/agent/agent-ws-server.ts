@@ -145,7 +145,7 @@ export class AgentWebSocketServer {
 
     private async dispatchMessageToAgent(message: ChatMessageDto): Promise<void> {
         const conversationKey = this.getConversationKey(message);
-        const agent = this.agentsMap.getOrCreate(conversationKey);
+        const agent = await this.agentsMap.getOrCreate(conversationKey);
 
         try {
             await agent.receive(message.text);
@@ -162,12 +162,19 @@ export class AgentWebSocketServer {
             return;
         }
 
-        const agent = this.agentsMap.getOrCreate(conversationKey);
-        const unsubscribe = agent.subscribe(
-            this.handleAgentResponse.bind(this, conversationKey)
-        );
-
-        this.conversationUnsubscribers.set(conversationKey, unsubscribe);
+        // Subscribe asynchronously; subscription is set up once the agent is ready
+        void this.agentsMap.getOrCreate(conversationKey).then((agent) => {
+            // Guard: another call may have already subscribed during the await
+            if (this.conversationUnsubscribers.has(conversationKey)) {
+                return;
+            }
+            const unsubscribe = agent.subscribe(
+                this.handleAgentResponse.bind(this, conversationKey)
+            );
+            this.conversationUnsubscribers.set(conversationKey, unsubscribe);
+        }).catch((error) => {
+            console.error(`[AGENT-WS] Error suscribiendo al agente ${conversationKey}:`, error);
+        });
     }
 
     private handleAgentResponse(conversationKey: string, event: AiAgentResponseEvent): void {

@@ -1,5 +1,7 @@
 import { Agent, type AgentEvent, type AgentMessage, type AgentOptions, type AgentTool } from '@mariozechner/pi-agent-core';
 import { getModel, type AssistantMessage } from '@mariozechner/pi-ai';
+import { createConversationStore, conversationKey, type ConversationStore } from './conversation-store.ts';
+import { ChatbotInitialSetup } from './chatbot-initial-setup.ts';
 
 export interface AiAgentResponseEvent {
     text: string;
@@ -14,6 +16,8 @@ export class AiAgentBuilder {
     private sessionId?: string;
     private thinkingLevel: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' = 'off';
     private tools: AgentTool<any>[] = [];
+    private botSession?: string;
+    private peerId?: string;
 
     public withTool(tool: AgentTool<any>): AiAgentBuilder {
         this.tools.push(tool);
@@ -45,23 +49,72 @@ export class AiAgentBuilder {
         return this;
     }
 
-    public build(): AiAgent {
+    /**
+     * Establece el UUID del chatbot al que pertenece este agente.
+     * Se usa como subcarpeta en `data/<botSession>/`.
+     */
+    public withBotSession(botSession: string): AiAgentBuilder {
+        this.botSession = botSession;
+        return this;
+    }
+
+    /**
+     * Establece el identificador del usuario con quien habla el agente.
+     * Se usa como nombre de archivo `conversation-<peerId>.json`.
+     */
+    public withPeerId(peerId: string): AiAgentBuilder {
+        this.peerId = peerId;
+        return this;
+    }
+
+    /**
+     * Construye el agente de forma asíncrona, restaurando el historial de
+     * conversación desde disco si existe.
+     */
+    public async buildAsync(): Promise<AiAgent> {
         const model = this.resolveModel();
+
+        // Load persisted conversation history if botSession + peerId are set
+        let restoredMessages: AgentMessage[] = [];
+        let store: ConversationStore | undefined;
+        let storeKey: string | undefined;
+
+        // Resolve effective system prompt via ChatbotInitialSetup
+        let effectiveSystemPrompt = this.systemPrompt;
+
+        if (this.botSession && this.peerId) {
+            effectiveSystemPrompt = await ChatbotInitialSetup.getPromptForPeer(this.botSession, this.peerId);
+        } else if (this.botSession) {
+            // Fallback if peerId is not available yet
+            await ChatbotInitialSetup.ensureFiles(this.botSession);
+        }
+
+        if (this.botSession && this.peerId) {
+            store = createConversationStore(this.botSession);
+            storeKey = conversationKey(this.peerId);
+            const result = await store.loadRaw(storeKey);
+            if (result.ok) {
+                restoredMessages = result.value;
+                console.log(`[AI-AGENT] Historial restaurado: ${restoredMessages.length} mensajes (${storeKey})`);
+            }
+        }
+
         const agentOptions: AgentOptions = {
             initialState: {
-                systemPrompt: this.systemPrompt,
+                systemPrompt: effectiveSystemPrompt,
                 model,
-                messages: [],
+                messages: restoredMessages,
                 tools: this.tools,
                 thinkingLevel: this.thinkingLevel
             },
             getApiKey: this.getApiKeyForProvider.bind(this)
         };
+
         const agent = this.sessionId
             ? new Agent({ ...agentOptions, sessionId: this.sessionId })
             : new Agent(agentOptions);
 
-        return new AiAgent(agent);
+        return new AiAgent(agent, store, storeKey);
     }
 
     private resolveModel(): NonNullable<ReturnType<typeof getModel>> {
@@ -95,7 +148,11 @@ export class AiAgent {
     private readonly listeners = new Set<AiAgentListener>();
     private processingQueue = Promise.resolve();
 
-    public constructor(private readonly agent: Agent) {
+    public constructor(
+        private readonly agent: Agent,
+        private readonly store?: ConversationStore,
+        private readonly storeKey?: string
+    ) {
         this.agent.subscribe(this.handleAgentEvent.bind(this));
     }
 
@@ -151,7 +208,23 @@ export class AiAgent {
             return;
         }
 
+        // Persist conversation history after a completed turn
+        void this.persistMessages();
+
         void this.notifyListeners({ text: responseText });
+    }
+
+    private async persistMessages(): Promise<void> {
+        if (!this.store || !this.storeKey) {
+            return;
+        }
+
+        try {
+            await this.store.saveRaw(this.storeKey, this.agent.state.messages);
+            console.log(`[AI-AGENT] Conversación guardada: ${this.storeKey} (${this.agent.state.messages.length} mensajes)`);
+        } catch (error) {
+            console.error('[AI-AGENT] Error guardando conversación:', error);
+        }
     }
 
     private async generateResponse(text: string): Promise<string> {
