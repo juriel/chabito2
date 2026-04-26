@@ -112,11 +112,17 @@ export class ChatbotInitialSetup {
             console.log(`[SETUP] 🆕 Primer usuario detectado. Promoviendo a ${peerId} como MANAGER de ${botSession}`);
             const textStore = StoreFactory.text('./data', botSession);
             await textStore.append('managers', `${peerId}\n`);
-            return 'manager';
         }
+        
+        const managersListAfter = await this.readManagers(botSession);
+        console.log(`[SETUP] Managers cargados (${managersListAfter.length}):`, managersListAfter);
 
         // REGLA 2: Reconocer si el peerId pertenece a un manager existente
-        const isManager = managersList.some((managerJid) => this.isSameManagerJid(peerId, managerJid));
+        const isManager = managersListAfter.some((managerJid) => {
+            const match = this.isSameManagerJid(peerId, managerJid);
+            console.log(`[SETUP] Comparando ${peerId} vs ${managerJid} → ${match ? '✅ MATCH' : '❌ NO MATCH'}`);
+            return match;
+        });
 
         if (isManager) {
             console.log(`[SETUP] 👑 Acceso administrativo concedido para: ${peerId}`);

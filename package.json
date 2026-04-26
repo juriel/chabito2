@@ -7,6 +7,7 @@
     "@types/ws": "^8.18.1",
     "baileys": "^7.0.0-rc.9",
     "cors": "^2.8.6",
+    "cron-parser": "^5.5.0",
     "dotenv": "^17.4.0",
     "express": "^5.2.1",
     "libsignal": "^2.0.1",

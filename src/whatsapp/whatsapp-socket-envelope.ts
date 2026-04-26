@@ -18,6 +18,7 @@ import { Boom } from '@hapi/boom';
 import WebSocket, { type RawData } from 'ws';
 import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 import { isChatMessageDto } from '../agent/agent-ws-server.ts';
+import { TaskScheduler } from '../agent/task-scheduler.ts';
 
 export class WhatsappSocketEnvelope {
     private static readonly AUTH_INFO_DIR = 'auth_info_baileys';
@@ -34,16 +35,22 @@ export class WhatsappSocketEnvelope {
 
     private readonly groupCache: NodeCache;
     private readonly pendingAgentMessages: ChatMessageDto[] = [];
+    private readonly taskScheduler: TaskScheduler;
     private agentSocketReconnectTimeout: NodeJS.Timeout | undefined;
     private isAgentSocketOpen = false;
 
     constructor(uuid: string) {
         this.uuid = uuid;
         this.groupCache = new NodeCache({});
+        
+        const modelProvider = (process.env.PI_PROVIDER || 'openai').trim().toLowerCase();
+        const modelId = (process.env.PI_MODEL || 'gpt-5-mini').trim();
+        this.taskScheduler = new TaskScheduler(uuid, { modelProvider, modelId });
     }
 
     public async connect(): Promise<void> {
         this.connectToAgentWebSocket();
+        void this.taskScheduler.start();
 
         const { state, saveCreds } = await useMultiFileAuthState(this.getSessionAuthPath());
         const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -175,7 +182,20 @@ export class WhatsappSocketEnvelope {
         if (!msg || !msg.message) return;
 
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        const jid = (msg.key as any).remoteJidAlt || msg.key.remoteJid;
+        
+        let jid = msg.key.remoteJid || '';
+        const altJid = (msg.key as any).remoteJidAlt;
+        
+        console.log(`[BAILEYS] JID Original: ${msg.key.remoteJid}, Alt: ${altJid}`);
+
+        // Prefer the phone number JID if available in either field
+        if (altJid?.endsWith('@s.whatsapp.net')) {
+            jid = altJid;
+            console.log(`[BAILEYS] Usando Alt JID (phone): ${jid}`);
+        } else if (jid.endsWith('@lid') && altJid?.endsWith('@s.whatsapp.net')) {
+             jid = altJid;
+             console.log(`[BAILEYS] Usando Alt JID (fallback): ${jid}`);
+        }
 
         if (jid && !msg.key.fromMe && text.trim().length > 0) {
             // Mark as read → sends blue double-tick to the sender
@@ -243,6 +263,7 @@ export class WhatsappSocketEnvelope {
     }
 
     private async deleteSessionAuthFolder(): Promise<void> {
+        this.taskScheduler.stop();
         const sessionAuthPath = this.getSessionAuthPath();
         await rm(sessionAuthPath, { recursive: true, force: true });
         delete this.qr;

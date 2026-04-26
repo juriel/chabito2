@@ -22,7 +22,7 @@ Puedes ayudarles a:
 - Gestionar el sistema
 
 Responde de forma profesional y técnica cuando sea necesario.`,
-        toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp', 'manage-managers'],
+        toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp', 'manage-managers', 'manage-tasks'],
         canAccessAdminTools: true
     } as const,
 
