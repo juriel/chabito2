@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { WhatsappSocketEnvelope } from '../whatsapp/whatsapp-socket-envelope.ts';
 import { AgentWebSocketServer } from '../agent/agent-ws-server.ts';
+import { cleanupSessionStorage, cleanupAllSessions } from '../whatsapp/baileys-storage-cleanup.ts';
 
 export class ChabitoHttpServer {
     private readonly app = express();
@@ -46,6 +47,8 @@ export class ChabitoHttpServer {
         this.app.get('/api/sessions/:uuid/status', this.handleStatusRequest.bind(this));
         this.app.get('/api/sessions', this.handleListSessions.bind(this));
         this.app.post('/api/sessions/:uuid/send', this.handleSendWhatsAppMessage.bind(this));
+        this.app.post('/api/sessions/:uuid/cleanup', this.handleCleanupSession.bind(this));
+        this.app.post('/api/sessions/cleanup', this.handleCleanupAllSessions.bind(this));
     }
 
     private async bootstrapStoredSessions(): Promise<void> {
@@ -73,6 +76,16 @@ export class ChabitoHttpServer {
                 console.error(`[BOOT] Error restaurando la sesion ${uuid}:`, error);
             });
         }
+
+        // Auto-cleanup: remove stale pre-keys accumulated across restarts
+        cleanupAllSessions().then((results) => {
+            const totalDeleted = results.reduce((sum, r) => sum + r.deleted, 0);
+            if (totalDeleted > 0) {
+                console.log(`[CLEANUP] Pre-keys eliminados al arranque: ${totalDeleted}`);
+            }
+        }).catch((error) => {
+            console.warn('[CLEANUP] Error durante limpieza automática:', error);
+        });
     }
 
     private async handleIndexRequest(req: express.Request, res: express.Response): Promise<void> {
@@ -241,5 +254,33 @@ export class ChabitoHttpServer {
         }
 
         throw new Error('UUID no proporcionado en la ruta');
+    }
+
+    private async handleCleanupSession(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        const keepLatest = Number(req.query['keep'] ?? 200);
+
+        console.log(`[API] POST /api/sessions/${uuid}/cleanup (keep=${keepLatest})`);
+
+        try {
+            const result = await cleanupSessionStorage(uuid, keepLatest);
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ error: String(error) });
+        }
+    }
+
+    private async handleCleanupAllSessions(req: express.Request, res: express.Response): Promise<void> {
+        const keepLatest = Number(req.query['keep'] ?? 200);
+
+        console.log(`[API] POST /api/sessions/cleanup (keep=${keepLatest})`);
+
+        try {
+            const results = await cleanupAllSessions(keepLatest);
+            const totalDeleted = results.reduce((sum, r) => sum + r.deleted, 0);
+            res.json({ results, totalDeleted });
+        } catch (error) {
+            res.status(500).json({ error: String(error) });
+        }
     }
 }

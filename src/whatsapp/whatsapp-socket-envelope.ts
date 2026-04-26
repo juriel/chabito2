@@ -178,6 +178,9 @@ export class WhatsappSocketEnvelope {
         const jid = msg.key.remoteJid;
 
         if (jid && !msg.key.fromMe && text.trim().length > 0) {
+            // Mark as read → sends blue double-tick to the sender
+            await this.waSocket?.readMessages([msg.key]);
+
             const dto = this.toChatMessageDto(msg, text, jid);
             this.sendMessageToAgentSocket(dto);
         }
