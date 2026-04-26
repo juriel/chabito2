@@ -44,6 +44,7 @@ export class ChabitoHttpServer {
         this.app.get('/api/sessions/:uuid/qr/text', this.handleQrTextRequest.bind(this));
         this.app.get('/api/sessions/:uuid/qr/png', this.handleQrPngRequest.bind(this));
         this.app.get('/api/sessions/:uuid/status', this.handleStatusRequest.bind(this));
+        this.app.get('/api/sessions', this.handleListSessions.bind(this));
     }
 
     private async bootstrapStoredSessions(): Promise<void> {
@@ -174,6 +175,14 @@ export class ChabitoHttpServer {
         } catch (error) {
             res.status(500).json({ error: 'Error generando el código en formato imagen.', details: String(error) });
         }
+    }
+
+    private handleListSessions(req: express.Request, res: express.Response): void {
+        const sessions = Array.from(this.activeSessions.entries()).map(([uuid, bot]) => ({
+            uuid,
+            status: bot.connectionState,
+        }));
+        res.json({ sessions });
     }
 
     private handleStatusRequest(req: express.Request, res: express.Response): void {

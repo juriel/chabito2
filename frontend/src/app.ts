@@ -40,6 +40,27 @@ export class ChabitoApp extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('hashchange', this.handleHashChange);
+    this.loadSessions();
+  }
+
+  private async loadSessions() {
+    try {
+      const response = await fetch(`${API_BASE}/api/sessions`);
+      if (response.ok) {
+        const data = await response.json();
+        this.sessions = data.sessions.map((s: any) => ({
+          uuid: s.uuid,
+          status: s.status || 'UNKNOWN',
+          loading: false
+        }));
+        this.requestUpdate('sessions');
+        for (const session of this.sessions) {
+          this.scheduleQrRefresh(session.uuid);
+        }
+      }
+    } catch (error) {
+      console.error('[Frontend] Error loading sessions', error);
+    }
   }
 
   disconnectedCallback() {
@@ -259,7 +280,7 @@ export class ChabitoApp extends LitElement {
           Tu asistente WhatsApp con IA, listo para lanzar chatbots y emparejar sesiones con QR.
         </p>
         <div class="mt-10 grid gap-4 sm:grid-cols-2 justify-center">
-          <a href="#/chatbots" @click=${(event: Event) => { event.preventDefault(); this.navigate('#/chatbots'); }} class="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-violet-700 transition hover:bg-violet-50">Administrar Chatbots</a>
+          <a href="#/chatbots" @click=${(event: Event) => { event.preventDefault(); this.navigate('#/chatbots'); }} class="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold transition hover:bg-violet-50" style="color: #6d28d9 !important;">Administrar Chatbots</a>
           <a href="/html/documentation.html" class="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/10 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/20">Documentación</a>
         </div>
       </section>
