@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { StoreFactory } from '../persistence/index.ts';
 import type { AgentType } from './agent-configs.ts';
 
@@ -37,6 +39,60 @@ export class ChatbotInitialSetup {
         }
     }
 
+    private static normalizeJid(jid: string): string {
+        return jid
+            .split('/')
+            .shift()!
+            .split(':')
+            .shift()!
+            .trim()
+            .toLowerCase();
+    }
+
+    private static getPhoneNumberLocalPart(jid: string): string {
+        const bare = this.normalizeJid(jid).split('@')[0];
+        const match = bare.match(/^\d+/);
+        return match ? match[0] : bare;
+    }
+
+    private static isSameManagerJid(peerId: string, managerJid: string): boolean {
+        const peerBare = this.normalizeJid(peerId);
+        const managerBare = this.normalizeJid(managerJid);
+
+        if (peerBare === managerBare) {
+            return true;
+        }
+
+        const peerPhone = this.getPhoneNumberLocalPart(peerBare);
+        const managerPhone = this.getPhoneNumberLocalPart(managerBare);
+
+        const match = peerPhone === managerPhone;
+        if (match) {
+            console.log(`[SETUP] ✅ Match por número detectado: ${peerPhone} (ID: ${peerBare} vs Manager: ${managerBare})`);
+        }
+        return match;
+    }
+
+    private static getBotSessionDir(botSession: string): string {
+        return resolve(join('./data', botSession));
+    }
+
+    private static getManagersPath(botSession: string): string {
+        return join(this.getBotSessionDir(botSession), 'managers.txt');
+    }
+
+    private static async readManagers(botSession: string): Promise<string[]> {
+        try {
+            const rawContent = await readFile(this.getManagersPath(botSession), 'utf8');
+            return rawContent
+                .split('\n')
+                .map((line) => line.trim())
+                .filter((line) => line.length > 0 && !line.startsWith('#'));
+        } catch {
+            return [];
+        }
+    }
+
     /**
      * Determina el tipo de agente basándose en si el peerId es un manager.
      * Si no hay managers registrados, el primero en escribir se convierte en uno.
@@ -49,37 +105,28 @@ export class ChatbotInitialSetup {
 
         await this.ensureFiles(botSession);
         
-        const textStore = StoreFactory.text('./data', botSession);
-        
-        // Cargar lista actual
-        const managersResult = await textStore.load('managers');
-        const rawContent = managersResult.ok ? managersResult.value : '';
-        
-        const managersList = rawContent
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0 && !line.startsWith('#'));
+        const managersList = await this.readManagers(botSession);
 
         // REGLA 1: Si no hay nadie, el primero se vuelve manager
         if (managersList.length === 0) {
             console.log(`[SETUP] 🆕 Primer usuario detectado. Promoviendo a ${peerId} como MANAGER de ${botSession}`);
+            const textStore = StoreFactory.text('./data', botSession);
             await textStore.append('managers', `${peerId}\n`);
             return 'manager';
         }
 
-        // REGLA 2: Reconocer si es un mensaje de sí mismo (o ya está en la lista)
-        // Normalmente peerId == ownJid si te escribes a ti mismo
-        const isManager = managersList.some(m => {
-            const managerIdPart = m.split(':')[0];
-            return managerIdPart ? peerId.includes(managerIdPart) : false;
-        });
+        // REGLA 2: Reconocer si el peerId pertenece a un manager existente
+        const isManager = managersList.some((managerJid) => this.isSameManagerJid(peerId, managerJid));
 
         if (isManager) {
-            console.log(`[SETUP] 👑 Acceso administrativo para: ${peerId}`);
+            console.log(`[SETUP] 👑 Acceso administrativo concedido para: ${peerId}`);
             return 'manager';
         }
 
         console.log(`[SETUP] 👤 Acceso de cliente para: ${peerId}`);
+        console.log(`[SETUP] 💡 Para promover este usuario a MANAGER, agrega esta línea a data/${botSession}/managers.txt:`);
+        console.log(`        ${peerId}`);
+        
         return 'client';
     }
 

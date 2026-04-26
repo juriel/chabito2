@@ -164,6 +164,9 @@ export class AiAgent {
         private readonly storeKey?: string,
         private readonly isManager: boolean = false
     ) {
+        if (this.isManager) {
+            console.log(`[AI-AGENT] 🛡️ Agente administrativo iniciado para: ${this.storeKey}`);
+        }
         this.agent.subscribe(this.handleAgentEvent.bind(this));
     }
 

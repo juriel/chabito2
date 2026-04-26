@@ -175,7 +175,7 @@ export class WhatsappSocketEnvelope {
         if (!msg || !msg.message) return;
 
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        const jid = msg.key.remoteJid;
+        const jid = (msg.key as any).remoteJidAlt || msg.key.remoteJid;
 
         if (jid && !msg.key.fromMe && text.trim().length > 0) {
             // Mark as read → sends blue double-tick to the sender
