@@ -60,15 +60,18 @@ export class ChatbotInitialSetup {
         const managerBare = this.normalizeJid(managerJid);
 
         if (peerBare === managerBare) {
+            console.log(`[SETUP] ✅ Match exacto: ${peerBare}`);
             return true;
         }
 
         const peerPhone = this.getPhoneNumberLocalPart(peerBare);
         const managerPhone = this.getPhoneNumberLocalPart(managerBare);
 
-        const match = peerPhone === managerPhone;
+        const match = peerPhone === managerPhone && peerPhone.length > 5;
         if (match) {
-            console.log(`[SETUP] ✅ Match por número detectado: ${peerPhone} (ID: ${peerBare} vs Manager: ${managerBare})`);
+            console.log(`[SETUP] ✅ Match por número detectado: ${peerPhone} (Peer: ${peerBare} vs Manager: ${managerBare})`);
+        } else {
+            console.log(`[SETUP] ❌ No match: PeerPhone=${peerPhone} vs ManagerPhone=${managerPhone}`);
         }
         return match;
     }

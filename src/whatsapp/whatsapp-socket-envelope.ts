@@ -186,15 +186,18 @@ export class WhatsappSocketEnvelope {
         let jid = msg.key.remoteJid || '';
         const altJid = (msg.key as any).remoteJidAlt;
         
-        console.log(`[BAILEYS] JID Original: ${msg.key.remoteJid}, Alt: ${altJid}`);
+        console.log(`[BAILEYS] Analizando JIDs - Principal: ${jid}, Alt: ${altJid}`);
 
-        // Prefer the phone number JID if available in either field
-        if (altJid?.endsWith('@s.whatsapp.net')) {
+        // Strong preference for @s.whatsapp.net (phone numbers)
+        if (jid.endsWith('@s.whatsapp.net')) {
+            // Keep it, it's already a phone number
+        } else if (altJid?.endsWith('@s.whatsapp.net')) {
+            console.log(`[BAILEYS] 🔄 Cambiando LID ${jid} por Phone ${altJid}`);
             jid = altJid;
-            console.log(`[BAILEYS] Usando Alt JID (phone): ${jid}`);
-        } else if (jid.endsWith('@lid') && altJid?.endsWith('@s.whatsapp.net')) {
-             jid = altJid;
-             console.log(`[BAILEYS] Usando Alt JID (fallback): ${jid}`);
+        } else if (altJid) {
+            // Fallback if no phone number but we have an alternative
+            console.log(`[BAILEYS] Usando JID alternativo: ${altJid}`);
+            jid = altJid;
         }
 
         if (jid && !msg.key.fromMe && text.trim().length > 0) {

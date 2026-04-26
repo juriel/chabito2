@@ -124,7 +124,7 @@ export class AiAgentBuilder {
             ? new Agent({ ...agentOptions, sessionId: this.sessionId })
             : new Agent(agentOptions);
 
-        return new AiAgent(agent, store, storeKey, this.isManager);
+        return new AiAgent(agent, this.botSession, store, storeKey, this.isManager);
     }
 
     private resolveModel(): NonNullable<ReturnType<typeof getModel>> {
@@ -160,6 +160,7 @@ export class AiAgent {
 
     public constructor(
         private readonly agent: Agent,
+        private readonly botSession?: string,
         private readonly store?: ConversationStore,
         private readonly storeKey?: string,
         private readonly isManager: boolean = false
@@ -194,6 +195,17 @@ export class AiAgent {
 
         const task = this.processingQueue
             .then(async () => {
+                // Reload prompt from disk for every interaction if botSession/peerId are set
+                if (this.botSession && this.storeKey) {
+                    const peerId = this.storeKey.replace(/^conversation-/, '');
+                    
+                    const latestPrompt = await ChatbotInitialSetup.getPromptForPeer(this.botSession, peerId);
+                    if (this.agent.state.systemPrompt !== latestPrompt) {
+                        console.log(`[AI-AGENT] Prompt actualizado para ${this.storeKey}`);
+                        this.agent.state.systemPrompt = latestPrompt;
+                    }
+                }
+
                 await this.agent.prompt(text);
             });
 
@@ -231,7 +243,7 @@ export class AiAgent {
 
     private async handleHelpCommand(): Promise<void> {
         const tools = this.agent.state.tools || [];
-        const toolList = tools.length > 0 
+        const toolList = tools.length > 0
             ? tools.map(t => `- *${t.name}*: ${t.description}`).join('\n')
             : '_No hay herramientas configuradas._';
 

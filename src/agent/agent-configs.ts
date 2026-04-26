@@ -22,14 +22,14 @@ Puedes ayudarles a:
 - Gestionar el sistema
 
 Responde de forma profesional y técnica cuando sea necesario.`,
-        toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp', 'manage-managers', 'manage-tasks'],
+        toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp', 'manage-managers', 'manage-tasks', 'get-time'],
         canAccessAdminTools: true
     } as const,
 
     client: {
         systemPrompt: `Eres el asistente de una tienda. Responde de forma amable, breve y profesional por WhatsApp.
 Cuando el cliente tenga una duda que no puedas resolver, puedes contactar a un manager de la tienda para que te ayude.`,
-        toolIds: ['notify-manager'],
+        toolIds: ['notify-manager', 'get-time'],
         canAccessAdminTools: false
     } as const
 } satisfies Record<AgentType, AgentTypeConfig>;

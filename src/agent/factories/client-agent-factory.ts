@@ -1,6 +1,7 @@
 import { AiAgentBuilder } from '../ai-agent.ts';
 import { getConfigForType } from '../agent-configs.ts';
 import { createNotifyManagerTool } from '../tools/notify-manager-tool.ts';
+import { createGetTimeTool } from '../tools/time-tool.ts';
 
 /**
  * Factory para crear agentes para clientes.
@@ -27,6 +28,9 @@ export class ClientAgentFactory {
             switch (toolId) {
                 case 'notify-manager':
                     builder.withTool(createNotifyManagerTool(botSession));
+                    break;
+                case 'get-time':
+                    builder.withTool(createGetTimeTool());
                     break;
             }
         });
