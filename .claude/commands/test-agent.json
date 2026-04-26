@@ -1,0 +1,5 @@
+{
+  "name": "test-agent",
+  "description": "Quick test to see if the WhatsApp connection works",
+  "run": "bun run test-agent.ts"
+}

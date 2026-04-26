@@ -1,0 +1,30 @@
+{
+  "project": {
+    "name": "chabito2",
+    "description": "WhatsApp Bot with AI Agents (multi-session)",
+    "primary_language": "typescript",
+    "languages": ["typescript"]
+  },
+  "paths": {
+    "source": "src",
+    "tests": "test",
+    "build": "dist",
+    "docs": "."
+  },
+  "preferences": {
+    "auto_imports": [
+      "src/index.ts",
+      "src/chabito_ws.ts"
+    ],
+    "test_framework": null,
+    "lint_command": "tsc --noEmit",
+    "build_command": "tsc",
+    "run_command": "bun run start:bun"
+  },
+  "context": {
+    "summaries": {
+      "project": "Chabito2 - WhatsApp Bot with AI Agents",
+      "architecture": "Multi-session WhatsApp + AI Agent per conversation via WebSocket"
+    }
+  }
+}

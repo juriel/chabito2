@@ -1,0 +1,5 @@
+{
+  "name": "start",
+  "description": "Start the Chabito2 server",
+  "run": "bun run start:bun"
+}

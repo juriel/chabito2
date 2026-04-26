@@ -1,0 +1,5 @@
+{
+  "name": "build",
+  "description": "Build the project (TypeScript + Frontend)",
+  "run": "tsc && cd frontend && bun run build"
+}
