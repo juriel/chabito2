@@ -18,6 +18,7 @@ export class AiAgentBuilder {
     private tools: AgentTool<any>[] = [];
     private botSession?: string;
     private peerId?: string;
+    private isManager: boolean = false;
 
     public withTool(tool: AgentTool<any>): AiAgentBuilder {
         this.tools.push(tool);
@@ -46,6 +47,15 @@ export class AiAgentBuilder {
 
     public withThinkingLevel(thinkingLevel: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'): AiAgentBuilder {
         this.thinkingLevel = thinkingLevel;
+        return this;
+    }
+
+    /**
+     * Establece si este agente es para un manager/administrador.
+     * Los managers pueden usar comandos especiales como /reset.
+     */
+    public withIsManager(isManager: boolean): AiAgentBuilder {
+        this.isManager = isManager;
         return this;
     }
 
@@ -114,7 +124,7 @@ export class AiAgentBuilder {
             ? new Agent({ ...agentOptions, sessionId: this.sessionId })
             : new Agent(agentOptions);
 
-        return new AiAgent(agent, store, storeKey);
+        return new AiAgent(agent, store, storeKey, this.isManager);
     }
 
     private resolveModel(): NonNullable<ReturnType<typeof getModel>> {
@@ -151,7 +161,8 @@ export class AiAgent {
     public constructor(
         private readonly agent: Agent,
         private readonly store?: ConversationStore,
-        private readonly storeKey?: string
+        private readonly storeKey?: string,
+        private readonly isManager: boolean = false
     ) {
         this.agent.subscribe(this.handleAgentEvent.bind(this));
     }
@@ -164,6 +175,12 @@ export class AiAgent {
     }
 
     public async receive(text: string): Promise<void> {
+        // Handle special commands for managers
+        if (this.isManager && text.trim().toLowerCase() === '/reset') {
+            await this.handleResetCommand();
+            return;
+        }
+
         const task = this.processingQueue
             .then(async () => {
                 await this.agent.prompt(text);
@@ -174,6 +191,31 @@ export class AiAgent {
         });
 
         await task;
+    }
+
+    private async handleResetCommand(): Promise<void> {
+        console.log(`[AI-AGENT] 🔄 Reset command ejecutado para ${this.storeKey}`);
+
+        try {
+            // Clear conversation history from memory
+            this.agent.state.messages = [];
+
+            // Clear persisted conversation if store exists
+            if (this.store && this.storeKey) {
+                await this.store.saveRaw(this.storeKey, []);
+                console.log(`[AI-AGENT] Conversación reseteada: ${this.storeKey}`);
+            }
+
+            // Notify listeners
+            void this.notifyListeners({
+                text: '✅ Conversación reseteada. El historial ha sido borrado.'
+            });
+        } catch (error) {
+            console.error('[AI-AGENT] Error reseteando conversación:', error);
+            void this.notifyListeners({
+                text: '❌ Error al resetear la conversación.'
+            });
+        }
     }
 
     public async prompt(text: string): Promise<string> {

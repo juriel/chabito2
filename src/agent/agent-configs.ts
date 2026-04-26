@@ -17,11 +17,12 @@ export const AGENT_CONFIGS = {
 Estás hablando con el DUEÑO o un MANAGER del bot.
 Puedes ayudarles a:
 - Cambiar los prompts del cliente y administrador
+- Consultar los prompts actuales del cliente y administrador
 - Enviar mensajes de WhatsApp a terceros
-- Ver estadísticas y gestionar el sistema
+- Gestionar el sistema
 
 Responde de forma profesional y técnica cuando sea necesario.`,
-        toolIds: ['change-prompt', 'send-whatsapp'],
+        toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp'],
         canAccessAdminTools: true
     } as const,
 

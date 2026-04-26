@@ -1,6 +1,7 @@
 import { AiAgentBuilder } from '../ai-agent.ts';
 import { getConfigForType } from '../agent-configs.ts';
 import { createChangePromptTool } from '../tools/change-prompt-tool.ts';
+import { createGetPromptTool } from '../tools/get-prompt-tool.ts';
 import { createSendWhatsAppMessageTool } from '../tools/whatsapp-tool.ts';
 
 /**
@@ -22,13 +23,17 @@ export class ManagerAgentFactory {
             .withBotSession(botSession)
             .withPeerId(peerId)
             .withSystemPrompt(config.systemPrompt)
-            .withThinkingLevel('off');
+            .withThinkingLevel('off')
+            .withIsManager(true); // ← Managers pueden usar comandos especiales
 
         // Add tools for managers
         config.toolIds.forEach((toolId) => {
             switch (toolId) {
                 case 'change-prompt':
                     builder.withTool(createChangePromptTool(botSession));
+                    break;
+                case 'get-prompt':
+                    builder.withTool(createGetPromptTool(botSession));
                     break;
                 case 'send-whatsapp':
                     builder.withTool(createSendWhatsAppMessageTool(botSession));

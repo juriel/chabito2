@@ -26,6 +26,7 @@ El sistema de agentes ahora utiliza una arquitectura **Factory + Configuración 
          ▼                     ▼
      Tools:              Tools:
    • change-prompt     • notify-manager
+   • get-prompt
    • send-whatsapp
 ```
 
@@ -39,7 +40,7 @@ Define qué puede hacer cada tipo de agente:
 export const AGENT_CONFIGS = {
   manager: {
     systemPrompt: "Eres el Asistente Administrativo...",
-    toolIds: ['change-prompt', 'send-whatsapp'],
+    toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp'],
     canAccessAdminTools: true
   },
   
@@ -70,10 +71,19 @@ ClientAgentFactory.create(botSession, peerId)
 | Tool | Tipo | Función |
 |------|------|---------|
 | `change-prompt` | Manager | Cambiar prompts de cliente/admin |
+| `get-prompt` | Manager | Consultar prompts actuales |
 | `send-whatsapp` | Manager | Enviar mensajes directos por WhatsApp |
 | `notify-manager` | Client | Enviar notificación a administrators |
 
-### 4. **ChatbotInitialSetup** - Detección de Tipo
+### 4. **Comandos Especiales** - Solo para Managers
+
+Los managers tienen acceso a comandos especiales que se ejecutan antes de enviar el mensaje al LLM:
+
+| Comando | Función |
+|---------|---------|
+| `/reset` | Borra todo el historial de conversación |
+
+### 5. **ChatbotInitialSetup** - Detección de Tipo
 
 Determina si un usuario es manager o cliente:
 
