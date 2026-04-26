@@ -1,0 +1,17 @@
+{
+  "name": "chabito-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run vite",
+    "build": "bun run vite build",
+    "preview": "bun run vite preview"
+  },
+  "dependencies": {
+    "lit": "^2.7.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.1"
+  }
+}

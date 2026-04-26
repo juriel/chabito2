@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chabito WS API</title>
+    <link href="/css/output.css" rel="stylesheet">
+</head>
+<body class="font-sans max-w-4xl mx-auto my-10 px-4 leading-relaxed">
+    <h1 class="text-3xl font-bold mb-4">Chabito WS API</h1>
+    <p class="mb-4">Estos son los endpoints disponibles actualmente.</p>
+    <p class="mb-4">UUID de ejemplo: <code class="bg-gray-100 px-1 py-0.5 rounded">${exampleUuid}</code></p>
+    <ul class="list-disc list-inside space-y-2">
+        <li>
+            <strong>POST</strong> <code class="bg-gray-100 px-1 py-0.5 rounded">/api/sessions/:uuid</code><br />
+            Crea una nueva sesion en memoria.<br />
+            Ejemplo: <a href="${baseUrl}/api/sessions/${exampleUuid}" class="text-blue-600 hover:underline">${baseUrl}/api/sessions/${exampleUuid}</a>
+        </li>
+        <li>
+            <strong>GET</strong> <code class="bg-gray-100 px-1 py-0.5 rounded">/api/sessions/:uuid/qr</code><br />
+            Devuelve el estado y el QR crudo si existe.<br />
+            Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/qr" class="text-blue-600 hover:underline">${baseUrl}/api/sessions/${exampleUuid}/qr</a>
+        </li>
+        <li>
+            <strong>GET</strong> <code class="bg-gray-100 px-1 py-0.5 rounded">/api/sessions/:uuid/qr/text</code><br />
+            Devuelve el QR en texto ASCII.<br />
+            Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/qr/text" class="text-blue-600 hover:underline">${baseUrl}/api/sessions/${exampleUuid}/qr/text</a>
+        </li>
+        <li>
+            <strong>GET</strong> <code class="bg-gray-100 px-1 py-0.5 rounded">/api/sessions/:uuid/qr/png</code><br />
+            Devuelve el QR como imagen PNG.<br />
+            Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/qr/png" class="text-blue-600 hover:underline">${baseUrl}/api/sessions/${exampleUuid}/qr/png</a>
+        </li>
+        <li>
+            <strong>GET</strong> <code class="bg-gray-100 px-1 py-0.5 rounded">/api/sessions/:uuid/status</code><br />
+            Devuelve el estado actual de la sesion.<br />
+            Enlace: <a href="${baseUrl}/api/sessions/${exampleUuid}/status" class="text-blue-600 hover:underline">${baseUrl}/api/sessions/${exampleUuid}/status</a>
+        </li>
+    </ul>
+    <p class="mt-4">Nota: el endpoint <code class="bg-gray-100 px-1 py-0.5 rounded">POST /api/sessions/:uuid</code> debe invocarse con una herramienta como <code class="bg-gray-100 px-1 py-0.5 rounded">curl</code>, Postman o desde el frontend.</p>
+</body>
+</html>
