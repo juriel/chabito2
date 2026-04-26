@@ -3,6 +3,7 @@ import { getConfigForType } from '../agent-configs.ts';
 import { createChangePromptTool } from '../tools/change-prompt-tool.ts';
 import { createGetPromptTool } from '../tools/get-prompt-tool.ts';
 import { createSendWhatsAppMessageTool } from '../tools/whatsapp-tool.ts';
+import { createManageManagersTool } from '../tools/manage-managers-tool.ts';
 
 /**
  * Factory para crear agentes administrativos (managers/dueños del bot).
@@ -37,6 +38,9 @@ export class ManagerAgentFactory {
                     break;
                 case 'send-whatsapp':
                     builder.withTool(createSendWhatsAppMessageTool(botSession));
+                    break;
+                case 'manage-managers':
+                    builder.withTool(createManageManagersTool(botSession));
                     break;
             }
         });

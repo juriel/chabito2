@@ -178,10 +178,18 @@ export class AiAgent {
     }
 
     public async receive(text: string): Promise<void> {
+        const command = text.trim().toLowerCase();
+
         // Handle special commands for managers
-        if (this.isManager && text.trim().toLowerCase() === '/reset') {
-            await this.handleResetCommand();
-            return;
+        if (this.isManager) {
+            if (command === '/reset') {
+                await this.handleResetCommand();
+                return;
+            }
+            if (command === '/help') {
+                await this.handleHelpCommand();
+                return;
+            }
         }
 
         const task = this.processingQueue
@@ -219,6 +227,26 @@ export class AiAgent {
                 text: '❌ Error al resetear la conversación.'
             });
         }
+    }
+
+    private async handleHelpCommand(): Promise<void> {
+        const tools = this.agent.state.tools || [];
+        const toolList = tools.length > 0 
+            ? tools.map(t => `- *${t.name}*: ${t.description}`).join('\n')
+            : '_No hay herramientas configuradas._';
+
+        const helpText = `*🛠️ Menú de Ayuda para Managers*
+
+*Comandos directos:*
+- */reset*: Borra el historial de esta conversación.
+- */help*: Muestra este menú.
+
+*Herramientas disponibles (puedes pedirlas en lenguaje natural):*
+${toolList}
+
+_Recuerda que como manager puedes pedirme cambios técnicos o información del sistema._`;
+
+        void this.notifyListeners({ text: helpText });
     }
 
     public async prompt(text: string): Promise<string> {
