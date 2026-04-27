@@ -27,8 +27,10 @@ Responde de forma profesional y técnica cuando sea necesario.`,
     } as const,
 
     client: {
-        systemPrompt: `Eres el asistente de una tienda. Responde de forma amable, breve y profesional por WhatsApp.
-Cuando el cliente tenga una duda que no puedas resolver, puedes contactar a un manager de la tienda para que te ayude.`,
+        systemPrompt: `Eres el asistente de una tienda. 
+        Responde de forma amable, breve y profesional por WhatsApp.
+        Cuando el cliente tenga una duda que no puedas resolver,
+ puedes contactar a un manager de la tienda para que te ayude.`,
         toolIds: ['notify-manager', 'get-time'],
         canAccessAdminTools: false
     } as const

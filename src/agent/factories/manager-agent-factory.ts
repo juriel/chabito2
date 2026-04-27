@@ -30,26 +30,19 @@ export class ManagerAgentFactory {
             .withIsManager(true); // ← Managers pueden usar comandos especiales
 
         // Add tools for managers
+        const toolRegistry: Record<string, (botSession: string) => any> = {
+            'change-prompt': createChangePromptTool,
+            'get-prompt': createGetPromptTool,
+            'send-whatsapp': createSendWhatsAppMessageTool,
+            'manage-managers': createManageManagersTool,
+            'manage-tasks': createManageTasksTool,
+            'get-time': () => createGetTimeTool()
+        };
+
         config.toolIds.forEach((toolId) => {
-            switch (toolId) {
-                case 'change-prompt':
-                    builder.withTool(createChangePromptTool(botSession));
-                    break;
-                case 'get-prompt':
-                    builder.withTool(createGetPromptTool(botSession));
-                    break;
-                case 'send-whatsapp':
-                    builder.withTool(createSendWhatsAppMessageTool(botSession));
-                    break;
-                case 'manage-managers':
-                    builder.withTool(createManageManagersTool(botSession));
-                    break;
-                case 'manage-tasks':
-                    builder.withTool(createManageTasksTool(botSession));
-                    break;
-                case 'get-time':
-                    builder.withTool(createGetTimeTool());
-                    break;
+            const factory = toolRegistry[toolId];
+            if (factory) {
+                builder.withTool(factory(botSession));
             }
         });
 

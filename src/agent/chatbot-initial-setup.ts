@@ -8,10 +8,10 @@ import type { AgentType } from './agent-configs.ts';
  * de cada chatbot basado en quién le escribe.
  */
 export class ChatbotInitialSetup {
-    private static readonly DEFAULT_EXTERNAL_PROMPT = 
+    private static readonly DEFAULT_EXTERNAL_PROMPT =
         `Eres el asistente de una tienda. Responde de forma amable y profesional.`;
 
-    private static readonly DEFAULT_ADMIN_PROMPT = 
+    private static readonly DEFAULT_ADMIN_PROMPT =
         `Eres el Asistente Administrativo de Chabito. 
          Estás hablando con el DUEÑO o un MANAGER del bot. 
          Ayúdales a gestionar el sistema y responde con datos técnicos si es necesario.`;
@@ -21,7 +21,7 @@ export class ChatbotInitialSetup {
      */
     public static async ensureFiles(botSession: string): Promise<void> {
         const textStore = StoreFactory.text('./data', botSession);
-        
+
         // 1. Prompt Externo (Público)
         if (!(await textStore.exists('prompt'))) {
             await textStore.save('prompt', this.DEFAULT_EXTERNAL_PROMPT);
@@ -35,7 +35,7 @@ export class ChatbotInitialSetup {
         // 3. Lista de Managers
         if (!(await textStore.exists('managers'))) {
             // Por defecto vacío, el usuario debe agregar números aquí
-            await textStore.save('managers', '# Agrega un número por línea (ej: 573001234567@s.whatsapp.net)\n');
+            await textStore.save('managers', '# Agrega un número por línea (ej: 573001234567)\n');
         }
     }
 
@@ -107,7 +107,7 @@ export class ChatbotInitialSetup {
         }
 
         await this.ensureFiles(botSession);
-        
+
         const managersList = await this.readManagers(botSession);
 
         // REGLA 1: Si no hay nadie, el primero se vuelve manager
@@ -116,7 +116,7 @@ export class ChatbotInitialSetup {
             const textStore = StoreFactory.text('./data', botSession);
             await textStore.append('managers', `${peerId}\n`);
         }
-        
+
         const managersListAfter = await this.readManagers(botSession);
         console.log(`[SETUP] Managers cargados (${managersListAfter.length}):`, managersListAfter);
 
@@ -135,7 +135,7 @@ export class ChatbotInitialSetup {
         console.log(`[SETUP] 👤 Acceso de cliente para: ${peerId}`);
         console.log(`[SETUP] 💡 Para promover este usuario a MANAGER, agrega esta línea a data/${botSession}/managers.txt:`);
         console.log(`        ${peerId}`);
-        
+
         return 'client';
     }
 
@@ -146,7 +146,7 @@ export class ChatbotInitialSetup {
     public static async getPromptForPeer(botSession: string, peerId: string): Promise<string> {
         const agentType = await this.getAgentType(botSession, peerId);
         const textStore = StoreFactory.text('./data', botSession);
-        
+
         if (agentType === 'manager') {
             const adminPrompt = await textStore.load('prompt-admin');
             return adminPrompt.ok ? adminPrompt.value : this.DEFAULT_ADMIN_PROMPT;

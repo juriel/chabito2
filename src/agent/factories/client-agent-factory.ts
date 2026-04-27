@@ -24,14 +24,15 @@ export class ClientAgentFactory {
             .withThinkingLevel('off');
 
         // Add tools for clients
+        const toolRegistry: Record<string, (botSession: string) => any> = {
+            'notify-manager': createNotifyManagerTool,
+            'get-time': () => createGetTimeTool()
+        };
+
         config.toolIds.forEach((toolId) => {
-            switch (toolId) {
-                case 'notify-manager':
-                    builder.withTool(createNotifyManagerTool(botSession));
-                    break;
-                case 'get-time':
-                    builder.withTool(createGetTimeTool());
-                    break;
+            const factory = toolRegistry[toolId];
+            if (factory) {
+                builder.withTool(factory(botSession));
             }
         });
 
