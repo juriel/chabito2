@@ -59,6 +59,17 @@ export class TaskScheduler {
         console.log(`[SCHEDULER] 🆕 Tarea agregada: ${task.id} (${task.type})`);
     }
 
+    public async updateTask(id: string, updates: Partial<Omit<BotTask, 'id'>>): Promise<boolean> {
+        const index = this.tasks.findIndex(t => t.id === id);
+        if (index !== -1) {
+            this.tasks[index] = { ...this.tasks[index], ...updates };
+            await this.saveTasks();
+            console.log(`[SCHEDULER] 📝 Tarea actualizada: ${id}`);
+            return true;
+        }
+        return false;
+    }
+
     public async removeTask(id: string): Promise<boolean> {
         const initialLength = this.tasks.length;
         this.tasks = this.tasks.filter(t => t.id !== id);

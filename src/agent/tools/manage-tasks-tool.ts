@@ -6,8 +6,9 @@ export const manageTasksParams = Type.Object({
     action: Type.Union([
         Type.Literal('add'),
         Type.Literal('remove'),
-        Type.Literal('list')
-    ], { description: 'Action to perform: "add" to schedule a new instruction, "remove" to delete a task, or "list" to see all tasks.' }),
+        Type.Literal('list'),
+        Type.Literal('edit')
+    ], { description: 'Action to perform: "add", "remove", "list", or "edit".' }),
     type: Type.Optional(Type.Union([
         Type.Literal('once'),
         Type.Literal('recurring')
@@ -77,6 +78,25 @@ export function createManageTasksTool(botSession: string): AgentTool<typeof mana
                     return {
                         content: [{ type: 'text', text: `✅ Tarea programada correctamente.\nID: *${newTask.id}*\nTipo: ${newTask.type}\nHorario: ${newTask.schedule}\nInstrucción: "${newTask.instruction}"` }],
                         details: { task: newTask }
+                    };
+                }
+
+                if (params.action === 'edit') {
+                    if (!params.id) throw new Error('Se requiere el ID para editar una tarea.');
+                    
+                    const updates: Partial<Omit<BotTask, 'id'>> = {};
+                    if (params.type) updates.type = params.type;
+                    if (params.schedule) updates.schedule = params.schedule;
+                    if (params.instruction) updates.instruction = params.instruction;
+
+                    if (Object.keys(updates).length === 0) {
+                        throw new Error('No se proporcionaron campos para actualizar.');
+                    }
+
+                    const success = await scheduler.updateTask(params.id, updates);
+                    return {
+                        content: [{ type: 'text', text: success ? `✅ Tarea ${params.id} actualizada.` : `⚠️ No se encontró la tarea ${params.id}.` }],
+                        details: { success }
                     };
                 }
 
