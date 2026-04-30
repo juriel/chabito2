@@ -174,13 +174,28 @@ export class ChatbotsPage extends LitElement {
 
   render() {
     return html`
-      <section class="py-20" @refresh-session=${this.handleRefreshSession} @create-session=${this.handleCreateSession}>
-        <div class="mx-auto max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-8 shadow-xl">
-          <h2 class="text-3xl font-bold text-slate-900 mb-8">Chatbots</h2>
-          
-          <chatbot-creation-box .apiError=${this.apiError}></chatbot-creation-box>
+      <section class="py-16" @refresh-session=${this.handleRefreshSession} @create-session=${this.handleCreateSession}>
+        <div class="mx-auto mb-6 max-w-4xl">
+          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--color-secondary)]">WhatsApp AI Control Surface</p>
+        </div>
 
-          <chatbot-list .sessions=${this.sessions}></chatbot-list>
+        <div class="frost-panel mx-auto max-w-4xl rounded-[12px] p-8 md:p-10">
+          <div class="relative z-10">
+            <div class="mb-6 flex flex-wrap items-start justify-between gap-5">
+              <div>
+                <h2 class="mb-3 text-4xl font-black tracking-[0.03em] text-[color:var(--color-primary)]">Chatbots</h2>
+                <p class="max-w-2xl text-sm leading-7 text-[color:rgba(26,26,26,0.68)]">Crea sesiones, consulta su QR y revisa el estado de vinculación con WhatsApp.</p>
+              </div>
+              <div class="panel-chip rounded-[var(--radius-soft)] px-4 py-3 text-left">
+                <p class="text-[11px] font-bold uppercase tracking-[0.28em] text-[color:var(--color-secondary)]">Modo</p>
+                <p class="mt-1 text-sm font-semibold text-[color:var(--color-primary)]">Orquestación en tiempo real</p>
+              </div>
+            </div>
+
+            <chatbot-creation-box .apiError=${this.apiError}></chatbot-creation-box>
+
+            <chatbot-list .sessions=${this.sessions}></chatbot-list>
+          </div>
         </div>
       </section>
     `;

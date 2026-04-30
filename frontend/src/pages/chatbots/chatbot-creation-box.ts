@@ -45,13 +45,13 @@ export class ChatbotCreationBox extends LitElement {
   render() {
     return html`
       <div class="grid gap-3">
-        <label for="uuid" class="text-sm font-semibold text-slate-700">UUID del chatbot</label>
+        <label for="uuid" class="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--color-primary)]">UUID del chatbot</label>
         <input id="uuid" type="text" .value=${this.uuidInput} @input=${this.updateUuid} placeholder="ejemplo: demo-session"
-          class="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-violet-500 focus:bg-white" />
+          class="rounded-[var(--radius-soft)] border border-[color:var(--color-border)] bg-white px-4 py-3 text-[color:var(--color-text-on-light)] outline-none transition focus:border-[color:var(--color-secondary)] focus:shadow-[0_0_0_1px_rgba(58,124,165,0.18)]" />
       </div>
-      <p class="text-sm text-slate-500 mt-3">Cada UUID crea una nueva sesión /api/sessions/:uuid y permite mostrar su QR.</p>
-      ${this.apiError ? html`<p class="rounded-2xl bg-rose-50 px-4 py-3 mt-3 text-sm font-semibold text-rose-700">${this.apiError}</p>` : ''}
-      <button class="mt-3 inline-flex w-full items-center justify-center rounded-full bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-violet-700"
+      <p class="mt-3 text-sm leading-7 text-[color:rgba(26,26,26,0.68)]">Cada UUID crea una nueva sesión <code>/api/sessions/:uuid</code> y permite mostrar su QR.</p>
+      ${this.apiError ? html`<p class="mt-3 rounded-[var(--radius-soft)] border border-[rgba(58,124,165,0.14)] bg-[color:var(--color-surface-muted)] px-4 py-3 text-sm font-semibold text-[color:var(--color-primary)]">${this.apiError}</p>` : ''}
+      <button class="mt-4 inline-flex w-full items-center justify-center rounded-[var(--radius-soft)] bg-[color:var(--color-primary)] px-6 py-3 text-sm font-semibold text-[color:var(--color-text-on-dark)] transition hover:bg-[color:var(--color-secondary)]"
         @click=${this.handleCreate}>Crear chatbot</button>
     `;
   }
