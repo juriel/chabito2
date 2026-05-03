@@ -41,9 +41,6 @@ export class ChatbotInitialSetup {
             ?.toLowerCase() || '';
     }
 
-    private static getPhoneNumberLocalPart(jid: string): string {
-        return this.normalizeJid(jid);
-    }
 
     private static isSameManagerJid(peerId: string, managerJid: string): boolean {
         const peerBare = this.normalizeJid(peerId);
@@ -97,8 +94,8 @@ export class ChatbotInitialSetup {
 
         // REGLA 1: Si no hay nadie, el primero se vuelve manager
         if (managersList.length === 0) {
-            const phone = this.getPhoneNumberLocalPart(peerId);
-            console.log(`[SETUP] 🆕 Primer usuario detectado. Promoviendo a ${phone} como MANAGER de ${botSession}`);
+            const phone = this.normalizeJid(peerId);
+            console.log(`[SETUP] 🆕🆕🆕 Primer usuario detectado. Promoviendo a ${phone} como MANAGER de ${botSession}`);
             const textStore = StoreFactory.text('./data', botSession);
             await textStore.append('managers', `${phone} Administrador\n`);
         }
