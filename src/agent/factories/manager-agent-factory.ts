@@ -3,7 +3,7 @@ import { getConfigForType } from '../agent-configs.ts';
 import { createChangePromptTool } from '../tools/change-prompt-tool.ts';
 import { createGetPromptTool } from '../tools/get-prompt-tool.ts';
 import { createSendWhatsAppMessageTool } from '../tools/whatsapp-tool.ts';
-import { createManageManagersTool } from '../tools/manage-managers-tool.ts';
+import { createAddManagerTool, createRemoveManagerTool, createListManagersTool } from '../tools/manage-managers-tool.ts';
 import { createManageTasksTool } from '../tools/manage-tasks-tool.ts';
 import { createGetTimeTool } from '../tools/time-tool.ts';
 
@@ -34,7 +34,9 @@ export class ManagerAgentFactory {
             'change-prompt': createChangePromptTool,
             'get-prompt': createGetPromptTool,
             'send-whatsapp': createSendWhatsAppMessageTool,
-            'manage-managers': createManageManagersTool,
+            'add-manager': createAddManagerTool,
+            'remove-manager': createRemoveManagerTool,
+            'list-managers': createListManagersTool,
             'manage-tasks': createManageTasksTool,
             'get-time': () => createGetTimeTool()
         };

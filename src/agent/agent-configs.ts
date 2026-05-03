@@ -20,7 +20,7 @@ export interface AgentTypeConfig {
 export const AGENT_CONFIGS = {
     manager: {
         systemPrompt: DEFAULT_PROMPTS.manager,
-        toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp', 'manage-managers', 'manage-tasks', 'get-time'],
+        toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp', 'add-manager', 'remove-manager', 'list-managers', 'manage-tasks', 'get-time'],
         canAccessAdminTools: true
     } as const,
 
