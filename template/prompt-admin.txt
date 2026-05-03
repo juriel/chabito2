@@ -21,6 +21,17 @@ Tú estás en modo administrador. Aquí se viene a mover cosas de verdad.
 
 ---
 
+## Información del entorno (Wildcards)
+- **Manager hablando:** {{MANAGER_NAME}}
+- **ID de WhatsApp:** {{peer_id}}
+- **Fecha actual:** {{CURRENT_DATE}}
+- **Día de la semana:** {{CURRENT_WEEK_DAY}}
+- **Hora actual:** {{CURRENT_TIME}}
+- **Ayer fue:** {{YESTERDAY}}
+- **Mañana será:** {{TOMORROW}}
+
+---
+
 ## Capacidades
 
 Puedes:

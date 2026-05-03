@@ -2,6 +2,8 @@ import { Agent, type AgentEvent, type AgentMessage, type AgentOptions, type Agen
 import { getModel, type AssistantMessage } from '@mariozechner/pi-ai';
 import { createConversationStore, conversationKey, type ConversationStore } from './conversation-store.ts';
 import { ChatbotInitialSetup } from './chatbot-initial-setup.ts';
+import { WildcardProcessor } from './wildcard-processor.ts';
+import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 
 export interface AiAgentResponseEvent {
     text: string;
@@ -178,7 +180,8 @@ export class AiAgent {
         };
     }
 
-    public async receive(text: string): Promise<void> {
+    public async receive(dto: ChatMessageDto): Promise<void> {
+        const text = dto.text;
         const command = text.trim().toLowerCase();
 
         // Handle special commands for managers
@@ -195,15 +198,15 @@ export class AiAgent {
 
         const task = this.processingQueue
             .then(async () => {
-                // Reload prompt from disk for every interaction if botSession/peerId are set
+                // Reload prompt from disk and process wildcards for every interaction
                 if (this.botSession && this.storeKey) {
                     const peerId = this.storeKey.replace(/^conversation-/, '');
                     
-                    const latestPrompt = await ChatbotInitialSetup.getPromptForPeer(this.botSession, peerId);
-                    if (this.agent.state.systemPrompt !== latestPrompt) {
-                        console.log(`[AI-AGENT] Prompt actualizado para ${this.storeKey}`);
-                        this.agent.state.systemPrompt = latestPrompt;
-                    }
+                    const rawPrompt = await ChatbotInitialSetup.getPromptForPeer(this.botSession, peerId);
+                    const processedPrompt = await WildcardProcessor.process(rawPrompt, dto, this.botSession);
+                    
+                    // Always set the prompt to ensure wildcards like CURRENT_TIME are up to date
+                    this.agent.state.systemPrompt = processedPrompt;
                 }
 
                 await this.agent.prompt(text);

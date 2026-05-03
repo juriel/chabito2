@@ -148,7 +148,7 @@ export class AgentWebSocketServer {
         const agent = await this.agentsMap.getOrCreate(conversationKey);
 
         try {
-            await agent.receive(message.text);
+            await agent.receive(message);
         } catch (error) {
             this.broadcastToConversation(
                 conversationKey,
