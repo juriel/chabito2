@@ -72,12 +72,15 @@ export class ChatbotInitialSetup {
                 .split('\n')
                 .map((line) => line.trim())
                 .filter((line) => line.length > 0 && !line.startsWith('#'))
-                .map((line) => line.split(/\s+/)[0]); // Extraer solo el número/JID (primera palabra)
-        } catch {
+                .map((line) => line.split(/\s+/)[0])
+                .filter((jid): jid is string => typeof jid === 'string' && jid.length > 0);
+        } catch (error: any) {
+            if (error.code !== 'ENOENT') {
+                console.error(`[readManagers] Error inesperado en sesión ${botSession}`, error);
+            }
             return [];
         }
     }
-
     /**
      * Determina el tipo de agente basándose en si el peerId es un manager.
      * Si no hay managers registrados, el primero en escribir se convierte en uno.
