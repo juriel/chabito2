@@ -40,6 +40,7 @@ export class ChabitoHttpServer {
 
     private configureRoutes(): void {
         this.app.get('/', this.handleIndexRequest.bind(this));
+        this.app.get('/dashboard', this.handleDashboardRequest.bind(this));
         this.app.post('/api/sessions/:uuid', this.handleCreateSession.bind(this));
         this.app.get('/api/sessions/:uuid/qr', this.handleQrRequest.bind(this));
         this.app.get('/api/sessions/:uuid/qr/text', this.handleQrTextRequest.bind(this));
@@ -86,6 +87,26 @@ export class ChabitoHttpServer {
         }).catch((error) => {
             console.warn('[CLEANUP] Error durante limpieza automática:', error);
         });
+    }
+
+    private async handleDashboardRequest(req: express.Request, res: express.Response): Promise<void> {
+        try {
+            // For simplicity in this environment, we'll serve the source index if dist isn't built
+            // but the production way would be to serve from dist.
+            // Let's try to find where the main entry is.
+            const path = await import('node:path');
+            const fs = await import('node:fs');
+            const distIndex = path.join(process.cwd(), 'frontend/dist/index.html');
+            const srcIndex = path.join(process.cwd(), 'frontend/index.html');
+            
+            if (fs.existsSync(distIndex)) {
+                res.sendFile(distIndex);
+            } else {
+                res.sendFile(srcIndex);
+            }
+        } catch (error) {
+            res.status(500).send('Error loading dashboard');
+        }
     }
 
     private async handleIndexRequest(req: express.Request, res: express.Response): Promise<void> {

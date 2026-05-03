@@ -3,10 +3,10 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { StoreFactory } from '../../persistence/index.ts';
 
 export const getPromptParams = Type.Object({
-    promptType: Type.Union([
-        Type.Literal('client'),
-        Type.Literal('manager')
-    ], { description: 'Which prompt to retrieve: "client" for customers or "manager" for administrators' })
+    promptType: Type.String({ 
+        enum: ['client', 'manager'],
+        description: 'Which prompt to retrieve: "client" for customers or "manager" for administrators' 
+    })
 });
 
 export function createGetPromptTool(botSession: string): AgentTool<typeof getPromptParams> {

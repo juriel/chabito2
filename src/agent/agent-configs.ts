@@ -1,7 +1,13 @@
-/**
- * Configuración centralizada para cada tipo de agente.
- * Define prompts, tools disponibles y comportamientos específicos.
- */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const template = (file: string) => readFileSync(join('./template', file), 'utf8');
+
+export const DEFAULT_PROMPTS = {
+    manager: template('prompt-admin.txt'),
+    client: template('prompt.txt'),
+    managers: template('managers.txt')
+};
 
 export type AgentType = 'manager' | 'client';
 
@@ -13,24 +19,13 @@ export interface AgentTypeConfig {
 
 export const AGENT_CONFIGS = {
     manager: {
-        systemPrompt: `Eres el Asistente Administrativo de Chabito.
-Estás hablando con el DUEÑO o un MANAGER del bot.
-Puedes ayudarles a:
-- Cambiar los prompts del cliente y administrador
-- Consultar los prompts actuales del cliente y administrador
-- Enviar mensajes de WhatsApp a terceros
-- Gestionar el sistema
-
-Responde de forma profesional y técnica cuando sea necesario.`,
+        systemPrompt: DEFAULT_PROMPTS.manager,
         toolIds: ['change-prompt', 'get-prompt', 'send-whatsapp', 'manage-managers', 'manage-tasks', 'get-time'],
         canAccessAdminTools: true
     } as const,
 
     client: {
-        systemPrompt: `Eres el asistente de una tienda. 
-        Responde de forma amable, breve y profesional por WhatsApp.
-        Cuando el cliente tenga una duda que no puedas resolver,
- puedes contactar a un manager de la tienda para que te ayude.`,
+        systemPrompt: DEFAULT_PROMPTS.client,
         toolIds: ['notify-manager', 'get-time'],
         canAccessAdminTools: false
     } as const

@@ -1,20 +1,16 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { StoreFactory } from '../persistence/index.ts';
-import type { AgentType } from './agent-configs.ts';
+import { type AgentType, DEFAULT_PROMPTS } from './agent-configs.ts';
 
 /**
  * Gestiona la configuración inicial y el comportamiento diferenciado 
  * de cada chatbot basado en quién le escribe.
  */
 export class ChatbotInitialSetup {
-    private static readonly DEFAULT_EXTERNAL_PROMPT =
-        `Eres el asistente de una tienda. Responde de forma amable y profesional.`;
-
-    private static readonly DEFAULT_ADMIN_PROMPT =
-        `Eres el Asistente Administrativo de Chabito. 
-         Estás hablando con el DUEÑO o un MANAGER del bot. 
-         Ayúdales a gestionar el sistema y responde con datos técnicos si es necesario.`;
+    private static readonly DEFAULT_EXTERNAL_PROMPT = DEFAULT_PROMPTS.client;
+    private static readonly DEFAULT_ADMIN_PROMPT = DEFAULT_PROMPTS.manager;
+    private static readonly DEFAULT_MANAGERS_CONTENT = DEFAULT_PROMPTS.managers;
 
     /**
      * Asegura que existan todos los archivos base para un bot nuevo.
@@ -34,8 +30,7 @@ export class ChatbotInitialSetup {
 
         // 3. Lista de Managers
         if (!(await textStore.exists('managers'))) {
-            // Por defecto vacío, el usuario debe agregar números aquí
-            await textStore.save('managers', '# Agrega un número por línea (ej: 573001234567)\n');
+            await textStore.save('managers', this.DEFAULT_MANAGERS_CONTENT);
         }
     }
 

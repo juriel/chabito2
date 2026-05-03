@@ -273,9 +273,9 @@ _Recuerda que como manager puedes pedirme cambios técnicos o información del s
         const assistantMsg = event.message as AssistantMessage;
 
         // Skip intermediate tool-use turns — the agent is still working.
-        // The final text response will arrive in a subsequent message_end with stopReason 'stop'.
         if (assistantMsg.stopReason === 'toolUse') {
-            console.log('[AI-AGENT] Tool use turn, esperando respuesta final...');
+            const toolCalls = assistantMsg.content.filter(c => c.type === 'toolCall' || c.type === 'tool_call' || c.type === 'tool_use' as any);
+            console.log(`[AI-AGENT] Ejecutando ${toolCalls.length} llamadas a herramientas...`);
             return;
         }
 

@@ -11,7 +11,8 @@ export class ChatbotsPage extends LitElement {
   static get properties() {
     return {
       sessions: { type: Array },
-      apiError: { type: String }
+      apiError: { type: String },
+      showModal: { type: Boolean }
     };
   }
 
@@ -22,6 +23,7 @@ export class ChatbotsPage extends LitElement {
     super();
     this.sessions = [];
     this.apiError = '';
+    this.showModal = false;
   }
 
   connectedCallback() {
@@ -96,6 +98,7 @@ export class ChatbotsPage extends LitElement {
       await this.refreshSession(uuid);
       this.scheduleQrRefresh(uuid);
       this.apiError = '';
+      this.showModal = false; // Close modal on success
       
       // Select the creation box and clear its input
       const creationBox = this.querySelector('chatbot-creation-box') as any;
@@ -174,27 +177,27 @@ export class ChatbotsPage extends LitElement {
 
   render() {
     return html`
-      <section class="py-16" @refresh-session=${this.handleRefreshSession} @create-session=${this.handleCreateSession}>
-        <div class="mx-auto mb-6 max-w-4xl">
-          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--color-secondary)]">WhatsApp AI Control Surface</p>
+      <section class="py-12" @refresh-session=${this.handleRefreshSession} @create-session=${this.handleCreateSession}>
+        <div class="header-actions mb-10">
+          <div>
+            <h2 class="section-heading" style="text-align: left; margin-bottom: 0.5rem;">Administrar Chatbots</h2>
+            <p style="color: rgba(var(--color-text), 0.6); font-size: 1.1rem;">Gestiona tus instancias de WhatsApp y revisa su estado de vinculación.</p>
+          </div>
+          <button @click=${() => this.showModal = true} class="button btn-primary" style="padding: 1rem 2rem;">
+            + Nueva Instancia
+          </button>
         </div>
 
-        <div class="frost-panel mx-auto max-w-4xl rounded-[12px] p-8 md:p-10">
-          <div class="relative z-10">
-            <div class="mb-6 flex flex-wrap items-start justify-between gap-5">
-              <div>
-                <h2 class="mb-3 text-4xl font-black tracking-[0.03em] text-[color:var(--color-primary)]">Chatbots</h2>
-                <p class="max-w-2xl text-sm leading-7 text-[color:rgba(26,26,26,0.68)]">Crea sesiones, consulta su QR y revisa el estado de vinculación con WhatsApp.</p>
-              </div>
-              <div class="panel-chip rounded-[var(--radius-soft)] px-4 py-3 text-left">
-                <p class="text-[11px] font-bold uppercase tracking-[0.28em] text-[color:var(--color-secondary)]">Modo</p>
-                <p class="mt-1 text-sm font-semibold text-[color:var(--color-primary)]">Orquestación en tiempo real</p>
-              </div>
+        <chatbot-list .sessions=${this.sessions}></chatbot-list>
+
+        <!-- Modal for Creation -->
+        <div class="modal-overlay ${this.showModal ? 'active' : ''}" @click=${(e: Event) => { if(e.target === e.currentTarget) this.showModal = false; }}>
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 class="text-2xl font-black text-[color:var(--color-primary)]">Nueva Sesión</h3>
+              <button class="modal-close" @click=${() => this.showModal = false}>&times;</button>
             </div>
-
             <chatbot-creation-box .apiError=${this.apiError}></chatbot-creation-box>
-
-            <chatbot-list .sessions=${this.sessions}></chatbot-list>
           </div>
         </div>
       </section>
