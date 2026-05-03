@@ -36,18 +36,13 @@ export class ChatbotInitialSetup {
 
     private static normalizeJid(jid: string): string {
         return jid
-            .split('/')
-            .shift()!
-            .split(':')
-            .shift()!
-            .trim()
-            .toLowerCase();
+            ?.split('@')[0]
+            ?.trim()
+            ?.toLowerCase() || '';
     }
 
     private static getPhoneNumberLocalPart(jid: string): string {
-        const bare = this.normalizeJid(jid).split('@')[0];
-        const match = bare.match(/^\d+/);
-        return match ? match[0] : bare;
+        return this.normalizeJid(jid);
     }
 
     private static isSameManagerJid(peerId: string, managerJid: string): boolean {
@@ -55,20 +50,14 @@ export class ChatbotInitialSetup {
         const managerBare = this.normalizeJid(managerJid);
 
         if (peerBare === managerBare) {
-            console.log(`[SETUP] ✅ Match exacto: ${peerBare}`);
+            console.log(`[SETUP] ✅✅✅✅ {peerId: ${peerId}, managerJid: ${managerJid} Match exacto: ${peerBare} ✅✅✅✅`);
             return true;
         }
-
-        const peerPhone = this.getPhoneNumberLocalPart(peerBare);
-        const managerPhone = this.getPhoneNumberLocalPart(managerBare);
-
-        const match = peerPhone === managerPhone && peerPhone.length > 5;
-        if (match) {
-            console.log(`[SETUP] ✅ Match por número detectado: ${peerPhone} (Peer: ${peerBare} vs Manager: ${managerBare})`);
-        } else {
-            console.log(`[SETUP] ❌ No match: PeerPhone=${peerPhone} vs ManagerPhone=${managerPhone}`);
+        else {
+            console.log(`[SETUP] ❌❌❌❌ {peerId: ${peerId}, managerJid: ${managerJid} No match: ${peerBare} ❌❌❌❌`);
+            return false;
         }
-        return match;
+
     }
 
     private static getBotSessionDir(botSession: string): string {
