@@ -3,13 +3,15 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { StoreFactory } from '../../persistence/index.ts';
 
 export const manageManagersParams = Type.Object({
-    action: Type.Union([
-        Type.Literal('add'),
-        Type.Literal('remove'),
-        Type.Literal('list')
-    ], { description: 'Action to perform: "add" to authorize a new manager, "remove" to revoke access, or "list" to see current managers.' }),
+    action: Type.String({ 
+        enum: ['add', 'remove', 'list'],
+        description: 'Action to perform: "add" to authorize a new manager, "remove" to revoke access, or "list" to see current managers.' 
+    }),
     number: Type.Optional(Type.String({ 
-        description: 'The WhatsApp ID/number of the manager (e.g. 573001234567@s.whatsapp.net or LID). Required for add/remove.' 
+        description: 'The WhatsApp ID/number of the manager (e.g. 573001234567). Required for add/remove.' 
+    })),
+    name: Type.Optional(Type.String({
+        description: 'The display name for the manager. Required for "add".'
     }))
 });
 
@@ -51,10 +53,12 @@ export function createManageManagersTool(botSession: string): AgentTool<typeof m
                     throw new Error('Se requiere un número para las acciones "add" o "remove".');
                 }
 
-                const targetNumber = params.number.trim().toLowerCase();
+                const targetNumber = params.number.trim().split('@')[0].toLowerCase(); // Solo el número
+                const targetName = params.name?.trim() || 'Sin Nombre';
 
                 if (params.action === 'add') {
-                    if (managers.includes(targetNumber)) {
+                    const exists = managers.some(m => m.split(/\s+/)[0].toLowerCase() === targetNumber);
+                    if (exists) {
                         return {
                             content: [{ type: 'text', text: `⚠️ El usuario ${targetNumber} ya es un manager.` }],
                             details: { success: false, reason: 'already_exists' }
@@ -62,27 +66,30 @@ export function createManageManagersTool(botSession: string): AgentTool<typeof m
                     }
                     
                     // Add to the end of the file
-                    await textStore.append('managers', `${targetNumber}\n`);
-                    console.log(`[TOOL] manage_managers OK → Agregado ${targetNumber}`);
+                    await textStore.append('managers', `${targetNumber} ${targetName}\n`);
+                    console.log(`[TOOL] manage_managers OK → Agregado ${targetNumber} (${targetName})`);
 
                     return {
-                        content: [{ type: 'text', text: `✅ Usuario ${targetNumber} agregado como manager correctamente.` }],
-                        details: { success: true, action: 'add', number: targetNumber }
+                        content: [{ type: 'text', text: `✅ Usuario ${targetNumber} (${targetName}) agregado como manager correctamente.` }],
+                        details: { success: true, action: 'add', number: targetNumber, name: targetName }
                     };
                 }
 
                 if (params.action === 'remove') {
-                    if (!managers.includes(targetNumber)) {
+                    const exists = managers.some(m => m.split(/\s+/)[0].toLowerCase() === targetNumber);
+                    if (!exists) {
                         return {
                             content: [{ type: 'text', text: `⚠️ El usuario ${targetNumber} no se encuentra en la lista de managers.` }],
                             details: { success: false, reason: 'not_found' }
                         };
                     }
 
-                    // Reconstruct file content preserving comments if possible (simple approach)
+                    // Reconstruct file content preserving comments if possible
                     const newLines = lines.filter(line => {
                         const trimmed = line.trim();
-                        return trimmed.startsWith('#') || (trimmed !== targetNumber && trimmed.length > 0);
+                        if (trimmed.startsWith('#') || trimmed.length === 0) return true;
+                        const phoneInLine = trimmed.split(/\s+/)[0].toLowerCase();
+                        return phoneInLine !== targetNumber;
                     });
 
                     await textStore.save('managers', newLines.join('\n') + '\n');

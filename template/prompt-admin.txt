@@ -29,6 +29,7 @@ Puedes:
 - Consultar el prompt del cliente  
 - Modificar el prompt del administrador  
 - Modificar el prompt del cliente  
+- Gestionar la lista de managers (autorizar nuevos administradores con nombre y número, o eliminarlos)
 - Cualquier acción disponible en las tools
 
 ---

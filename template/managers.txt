@@ -1,2 +1,2 @@
-# Agrega un número por línea (ej: 573001234567)
-573004654724@s.whatsapp.net
+# Agrega un número por línea (ej: 573001234567) seguido del nombre
+573004654724 Jaime Uriel Torres

@@ -85,7 +85,8 @@ export class ChatbotInitialSetup {
             return rawContent
                 .split('\n')
                 .map((line) => line.trim())
-                .filter((line) => line.length > 0 && !line.startsWith('#'));
+                .filter((line) => line.length > 0 && !line.startsWith('#'))
+                .map((line) => line.split(/\s+/)[0]); // Extraer solo el número/JID (primera palabra)
         } catch {
             return [];
         }
@@ -107,9 +108,10 @@ export class ChatbotInitialSetup {
 
         // REGLA 1: Si no hay nadie, el primero se vuelve manager
         if (managersList.length === 0) {
-            console.log(`[SETUP] 🆕 Primer usuario detectado. Promoviendo a ${peerId} como MANAGER de ${botSession}`);
+            const phone = this.getPhoneNumberLocalPart(peerId);
+            console.log(`[SETUP] 🆕 Primer usuario detectado. Promoviendo a ${phone} como MANAGER de ${botSession}`);
             const textStore = StoreFactory.text('./data', botSession);
-            await textStore.append('managers', `${peerId}\n`);
+            await textStore.append('managers', `${phone} Administrador\n`);
         }
 
         const managersListAfter = await this.readManagers(botSession);
