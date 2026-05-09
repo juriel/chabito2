@@ -84,17 +84,74 @@ Variables de entorno soportadas:
 Antes de iniciar tu chatbot, debes configurar el proveedor de IA y tu API Key. Crea un archivo `.env` en la raíz del proyecto (si no existe) y agrega la configuración correspondiente a tu proveedor:
 
 ```env
-# Proveedor de IA (ej: xai, openai, anthropic, google, groq)
-PI_PROVIDER=xai
-# Modelo a utilizar
-PI_MODEL=grok-beta
-# API Key del proveedor correspondiente (Ejemplo para XAI)
-XAI_API_KEY=tu_clave_api_aqui
-
+# Proveedor de IA (openai | openrouter | gemini | claude | groq | ...)
+PI_PROVIDER=openai
+# Modelo a utilizar (depende del proveedor)
+PI_MODEL=gpt-5-mini
 # Prompt del sistema que define la personalidad de tu bot
 AGENT_SYSTEM_PROMPT=Eres Chabito. Responde de forma útil, breve y amable por WhatsApp.
 ```
-> **Nota:** Dependiendo de tu `PI_PROVIDER`, la variable de la clave cambiará (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, etc).
+> Nota: En este proyecto, `PI_PROVIDER=gemini` se normaliza a `google`, y `PI_PROVIDER=grok` se normaliza a `xai`.
+
+### Proveedores soportados (ejemplos)
+
+#### OpenAI
+
+```env
+PI_PROVIDER=openai
+PI_MODEL=gpt-5-mini
+OPENAI_API_KEY=tu_clave_openai
+```
+
+#### Gemini (Google)
+
+```env
+PI_PROVIDER=gemini
+PI_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=tu_clave_gemini
+```
+
+#### Claude (Anthropic)
+
+```env
+PI_PROVIDER=anthropic
+PI_MODEL=claude-3-5-sonnet-latest
+ANTHROPIC_API_KEY=tu_clave_anthropic
+```
+
+#### Grok (xAI)
+
+```env
+PI_PROVIDER=grok
+PI_MODEL=grok-beta
+XAI_API_KEY=tu_clave_xai
+```
+
+#### OpenRouter
+
+```env
+PI_PROVIDER=openrouter
+# Puedes usar IDs de modelo de OpenRouter, por ejemplo:
+PI_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
+OPENROUTER_API_KEY=tu_clave_openrouter
+
+# Importante: base URL OpenAI-compatible para OpenRouter
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+
+# Opcional pero recomendado por OpenRouter (headers)
+OPENROUTER_SITE_URL=https://chabito.dev
+OPENROUTER_APP_NAME=chabito
+```
+
+### Base URL (opcional)
+
+Para endpoints OpenAI-compatibles (proxies, gateways, OpenRouter), puedes forzar la URL base con:
+
+```env
+PI_BASE_URL=https://openrouter.ai/api/v1
+# o:
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+```
 
 ## Flujo de WhatsApp: Creación de tu Chatbot desde la UI
 

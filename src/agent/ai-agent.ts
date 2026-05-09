@@ -12,7 +12,7 @@ export interface AiAgentResponseEvent {
 type AiAgentListener = (event: AiAgentResponseEvent) => void | Promise<void>;
 
 export class AiAgentBuilder {
-    private modelProvider = (process.env.PI_PROVIDER || 'openai').trim().toLowerCase();
+    private modelProvider = this.normalizeProvider((process.env.PI_PROVIDER || 'openai').trim().toLowerCase());
     private modelId = (process.env.PI_MODEL || 'gpt-5-mini').trim();
     private systemPrompt = process.env.AGENT_SYSTEM_PROMPT || 'Eres Chabito. Responde de forma util, breve y amable por WhatsApp.';
     private sessionId?: string;
@@ -28,7 +28,7 @@ export class AiAgentBuilder {
     }
 
     public withModelProvider(modelProvider: string): AiAgentBuilder {
-        this.modelProvider = modelProvider.trim().toLowerCase();
+        this.modelProvider = this.normalizeProvider(modelProvider.trim().toLowerCase());
         return this;
     }
 
@@ -85,6 +85,21 @@ export class AiAgentBuilder {
      */
     public async buildAsync(): Promise<AiAgent> {
         const model = this.resolveModel();
+        const apiKeyForModel = this.getApiKeyForProvider(model.provider);
+        if (!apiKeyForModel) {
+            const hints: Record<string, string> = {
+                openai: 'OPENAI_API_KEY (or OPENROUTER_API_KEY if using OpenRouter base URL)',
+                openrouter: 'OPENROUTER_API_KEY',
+                google: 'GEMINI_API_KEY',
+                groq: 'GROQ_API_KEY',
+                anthropic: 'ANTHROPIC_API_KEY',
+                xai: 'XAI_API_KEY'
+            };
+            const hint = hints[model.provider] || 'API key env var for that provider';
+            console.error(
+                `[AI-AGENT] Falta API key para provider=${model.provider}. Configura ${hint}. (PI_PROVIDER=${this.modelProvider}, PI_MODEL=${this.modelId})`
+            );
+        }
 
         // Load persisted conversation history if botSession + peerId are set
         let restoredMessages: AgentMessage[] = [];
@@ -130,13 +145,74 @@ export class AiAgentBuilder {
     }
 
     private resolveModel(): NonNullable<ReturnType<typeof getModel>> {
-        const model = getModel(this.modelProvider as never, this.modelId as never);
+        const baseModel = getModel(this.modelProvider as never, this.modelId as never);
 
-        if (!model) {
+        // If the model isn't in the built-in registry, allow a minimal "custom model" for OpenAI-compatible endpoints.
+        // This is important for OpenRouter model IDs like `nvidia/...:free`.
+        const overrideBaseUrl = (process.env.PI_BASE_URL || process.env.OPENAI_BASE_URL || '').trim();
+        const allowCustom =
+            !baseModel && !!overrideBaseUrl && (this.modelProvider === 'openai' || this.modelProvider === 'openrouter' || this.modelProvider === 'xai' || this.modelProvider === 'groq');
+        if (!baseModel && allowCustom) {
+            const custom: any = {
+                id: this.modelId,
+                name: this.modelId,
+                api: 'openai-completions',
+                provider: this.modelProvider,
+                baseUrl: overrideBaseUrl,
+                reasoning: false,
+                input: ['text', 'image'],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 128000,
+                maxTokens: 16384,
+                headers: {}
+            };
+
+            if (this.modelProvider === 'openrouter' || overrideBaseUrl.includes('openrouter.ai')) {
+                const siteUrl = (process.env.OPENROUTER_SITE_URL || '').trim();
+                const appName = (process.env.OPENROUTER_APP_NAME || '').trim();
+                if (siteUrl) custom.headers['HTTP-Referer'] = siteUrl;
+                if (appName) custom.headers['X-Title'] = appName;
+            }
+
+            return custom;
+        }
+
+        if (!baseModel) {
             throw new Error(`Modelo no configurado o inexistente: provider=${this.modelProvider}, model=${this.modelId}`);
         }
 
+        // Clone so we can safely override baseUrl/headers via env without mutating shared registry objects.
+        const model: any = {
+            ...baseModel,
+            headers: { ...(baseModel as any).headers }
+        };
+
+        // Allow overriding OpenAI-compatible base URL (useful for OpenRouter, proxies, self-hosted gateways, etc).
+        const isOpenAICompatApi = model.api === 'openai-completions' || model.api === 'openai-responses';
+        if (overrideBaseUrl && isOpenAICompatApi) {
+            model.baseUrl = overrideBaseUrl;
+        }
+
+        // OpenRouter "recommended" headers (optional): https://openrouter.ai docs suggest Referer + Title.
+        const looksLikeOpenRouter =
+            this.modelProvider === 'openrouter' ||
+            (typeof model.baseUrl === 'string' && model.baseUrl.includes('openrouter.ai'));
+        if (looksLikeOpenRouter) {
+            const siteUrl = (process.env.OPENROUTER_SITE_URL || '').trim();
+            const appName = (process.env.OPENROUTER_APP_NAME || '').trim();
+            if (siteUrl) model.headers['HTTP-Referer'] = siteUrl;
+            if (appName) model.headers['X-Title'] = appName;
+        }
+
         return model;
+    }
+
+    private normalizeProvider(provider: string): string {
+        // Friendly aliases (users commonly say "gemini" or "grok")
+        if (provider === 'gemini') return 'google';
+        if (provider === 'grok') return 'xai';
+        if (provider === 'google-vertex') return 'google_vertex';
+        return provider;
     }
 
     private getApiKeyForProvider(provider: string): string | undefined {
@@ -152,7 +228,25 @@ export class AiAgentBuilder {
         };
 
         const envName = apiKeyEnvByProvider[provider];
-        return envName ? process.env[envName] : undefined;
+        let key = envName ? process.env[envName] : undefined;
+
+        // Convenience: allow using OpenRouter key with OpenAI-compatible base URL and provider=openai.
+        if (!key && provider === 'openai') {
+            const baseUrl = (process.env.PI_BASE_URL || process.env.OPENAI_BASE_URL || '').trim();
+            if (baseUrl.includes('openrouter.ai')) key = process.env.OPENROUTER_API_KEY;
+        }
+
+        // Convenience: if user selected OpenAI provider but only set OPENROUTER_API_KEY, use it.
+        if (!key && provider === 'openai') {
+            key = process.env.OPENROUTER_API_KEY;
+        }
+
+        // Convenience: some people set OPENAI_API_KEY even when using openrouter provider.
+        if (!key && provider === 'openrouter') {
+            key = process.env.OPENAI_API_KEY;
+        }
+
+        return key;
     }
 }
 
@@ -283,7 +377,13 @@ _Recuerda que como manager puedes pedirme cambios técnicos o información del s
         }
 
         if (assistantMsg.stopReason === 'error' && assistantMsg.errorMessage) {
-            console.error('[AI-AGENT] Error from LLM API:', assistantMsg.errorMessage);
+            const meta = {
+                provider: (assistantMsg as any).provider,
+                model: (assistantMsg as any).model,
+                api: (assistantMsg as any).api,
+                error: assistantMsg.errorMessage
+            };
+            console.error('💣☠️ [AI-AGENT] Error del LLM:', meta);
             void this.notifyListeners({ text: `❌ Error del LLM: ${assistantMsg.errorMessage}` });
             return;
         }

@@ -36,9 +36,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "start:bun": "bun run src/index.ts",
-    "frontend:dev": "cd frontend && bun run dev",
-    "frontend:build": "cd frontend && bun run build",
+    "start:bun": "bun run frontend:build && bun run src/index.ts",
+    "frontend:dev": "cd frontend && bun install && bun run dev",
+    "frontend:build": "cd frontend && bun install && bun run build",
     "build": "tsc",
     "build:css": "postcss public/css/styles.css -o public/css/output.css",
     "build:bun": "bun build ./src/index.ts --outdir ./dist --target bun"
