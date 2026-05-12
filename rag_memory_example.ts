@@ -1,4 +1,4 @@
-import { RAGMemory } from "./rag_memory.ts";
+import { RAGMemory } from "./src/knowledge/rag_memory.ts";
 
 async function main() {
   const mem = new RAGMemory({ chatUuid: "example-chat" });
