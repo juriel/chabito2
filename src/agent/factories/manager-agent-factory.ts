@@ -6,6 +6,8 @@ import { createSendWhatsAppMessageTool } from '../tools/whatsapp-tool.ts';
 import { createAddManagerTool, createRemoveManagerTool, createListManagersTool } from '../tools/manage-managers-tool.ts';
 import { createManageTasksTool } from '../tools/manage-tasks-tool.ts';
 import { createGetTimeTool } from '../tools/time-tool.ts';
+import { createAddRagKnowledgeTool } from '../tools/add-rag-knowledge-tool.ts';
+import { createQueryRagKnowledgeTool } from '../tools/query-rag-knowledge-tool.ts';
 
 /**
  * Factory para crear agentes administrativos (managers/dueños del bot).
@@ -38,6 +40,8 @@ export class ManagerAgentFactory {
             'remove-manager': createRemoveManagerTool,
             'list-managers': createListManagersTool,
             'manage-tasks': createManageTasksTool,
+            'add-rag-knowledge': createAddRagKnowledgeTool,
+            'query-rag-knowledge': createQueryRagKnowledgeTool,
             'get-time': () => createGetTimeTool()
         };
 

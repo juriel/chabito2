@@ -2,7 +2,6 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { embed } from "@mariozechner/pi-agent-core";
 import { Database } from "bun:sqlite";
 
 type KnowledgeRecord = {
@@ -93,9 +92,84 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 async function embedText(text: string): Promise<number[]> {
-  // `embed()` can return `number[]`, `Float32Array`, or similar iterable.
-  const vec = await (embed as any)(text);
-  return toNumberArray(vec);
+  try {
+    return await embedTextViaApi(text);
+  } catch (error) {
+    console.warn("[RAGMemory] Falling back to local embedding:", error);
+    return embedTextLocally(text);
+  }
+}
+
+function getEmbeddingConfig(): { apiKey: string; baseUrl: string; model: string; appName?: string; siteUrl?: string } {
+  const provider = (process.env.PI_PROVIDER ?? "openai").toLowerCase();
+  const baseUrl = process.env.PI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+  const isOpenRouter = baseUrl.includes("openrouter.ai") || provider === "openrouter";
+
+  const apiKey = isOpenRouter
+    ? (process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || "").trim()
+    : (process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || "").trim();
+
+  const defaultModel = isOpenRouter ? "openai/text-embedding-3-small" : "text-embedding-3-small";
+  const model = (process.env.RAG_EMBED_MODEL || process.env.OPENAI_EMBEDDING_MODEL || defaultModel).trim();
+
+  return {
+    apiKey,
+    baseUrl,
+    model,
+    appName: process.env.OPENROUTER_APP_NAME,
+    siteUrl: process.env.OPENROUTER_SITE_URL
+  };
+}
+
+async function embedTextViaApi(text: string): Promise<number[]> {
+  const { apiKey, baseUrl, model, appName, siteUrl } = getEmbeddingConfig();
+  if (!apiKey) {
+    throw new Error("No embedding API key configured");
+  }
+
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/embeddings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+      ...(appName ? { "HTTP-Referer": siteUrl || "https://chabito.dev" } : {}),
+      ...(appName ? { "X-Title": appName } : {})
+    },
+    body: JSON.stringify({
+      model,
+      input: text
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Embedding API error ${response.status}: ${await response.text()}`);
+  }
+
+  const payload = await response.json() as {
+    data?: Array<{ embedding?: unknown }>;
+  };
+  const embedding = payload.data?.[0]?.embedding;
+  return toNumberArray(embedding);
+}
+
+function embedTextLocally(text: string): number[] {
+  const normalized = text.toLowerCase().trim();
+  const vector = new Array<number>(256).fill(0);
+
+  for (let i = 0; i < normalized.length; i++) {
+    const code = normalized.charCodeAt(i);
+    const current = code & 255;
+    const next = i + 1 < normalized.length ? normalized.charCodeAt(i + 1) & 255 : 0;
+    vector[current] += 1;
+    vector[(current * 31 + next) & 255] += 0.5;
+  }
+
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  if (norm === 0) {
+    return vector;
+  }
+
+  return vector.map((value) => value / norm);
 }
 
 function safeParseEmbedding(json: string | null | undefined): number[] | null {
@@ -261,7 +335,7 @@ export class RAGMemory {
 }
 
 // Usage example (tsx):
-//   import { RAGMemory } from "./rag_memory.ts";
+//   import { RAGMemory } from "./src/knowledge/rag_memory.ts";
 //   const mem = new RAGMemory({ chatUuid: "chat-123" });
 //   const id = await mem.create("Coffee preferences", ["coffee", "milk"], "I like oat milk lattes.");
 //   console.log(await mem.search("oat milk", 3));
