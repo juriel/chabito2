@@ -48,6 +48,7 @@ export class ChabitoHttpServer {
         this.app.get('/api/sessions/:uuid/status', this.handleStatusRequest.bind(this));
         this.app.get('/api/sessions', this.handleListSessions.bind(this));
         this.app.post('/api/sessions/:uuid/send', this.handleSendWhatsAppMessage.bind(this));
+        this.app.post('/api/sessions/:uuid/search-contacts', this.handleSearchContacts.bind(this));
         this.app.post('/api/sessions/:uuid/cleanup', this.handleCleanupSession.bind(this));
         this.app.post('/api/sessions/cleanup', this.handleCleanupAllSessions.bind(this));
     }
@@ -175,6 +176,31 @@ export class ChabitoHttpServer {
             const errorMessage = error instanceof Error ? error.message : String(error);
             console.error(`[API] Error enviando mensaje desde endpoint para ${uuid}:`, errorMessage);
             res.status(500).json({ error: 'Error enviando el mensaje', details: errorMessage });
+        }
+    }
+
+    private async handleSearchContacts(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        const { query } = req.body;
+
+        if (typeof query !== 'string') {
+            res.status(400).json({ error: 'Falta parámetro "query" en el body.' });
+            return;
+        }
+
+        const bot = this.activeSessions.get(uuid);
+        if (!bot) {
+            res.status(404).json({ error: 'La sesión no ha sido instanciada o no existe.' });
+            return;
+        }
+
+        try {
+            const contacts = bot.searchContacts(query);
+            res.json({ success: true, contacts });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[API] Error buscando contactos para ${uuid}:`, errorMessage);
+            res.status(500).json({ error: 'Error buscando contactos', details: errorMessage });
         }
     }
 

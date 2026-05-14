@@ -36,6 +36,7 @@ export class WhatsappSocketEnvelope {
     private readonly groupCache: NodeCache;
     private readonly pendingAgentMessages: ChatMessageDto[] = [];
     private readonly taskScheduler: TaskScheduler;
+    private readonly contacts = new Map<string, any>();
     private agentSocketReconnectTimeout: NodeJS.Timeout | undefined;
     private isAgentSocketOpen = false;
 
@@ -162,6 +163,26 @@ export class WhatsappSocketEnvelope {
         console.log(`[BAILEYS] Mensaje enviado a tercero desde tool: ${jid}`);
     }
 
+    public searchContacts(query: string): any[] {
+        const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const normalizedQuery = normalize(query);
+
+        const results = Array.from(this.contacts.values()).filter(c => {
+            const name = normalize(c.name || '');
+            const pushName = normalize(c.pushName || '');
+            const verifiedName = normalize(c.verifiedName || '');
+            const id = normalize(c.id || '');
+            
+            return name.includes(normalizedQuery) || 
+                   pushName.includes(normalizedQuery) || 
+                   verifiedName.includes(normalizedQuery) || 
+                   id.includes(normalizedQuery);
+        });
+
+        // Limit to 20 results to avoid huge payloads
+        return results.slice(0, 20);
+    }
+
     private setupEvents(): void {
         if (!this.waSocket) return;
 
@@ -171,6 +192,22 @@ export class WhatsappSocketEnvelope {
 
         this.waSocket.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
             await this.handleConnectionUpdate(update);
+        });
+
+        this.waSocket.ev.on('contacts.upsert', (contacts) => {
+            for (const contact of contacts) {
+                const existing = this.contacts.get(contact.id) || {};
+                this.contacts.set(contact.id, { ...existing, ...contact });
+            }
+        });
+
+        this.waSocket.ev.on('contacts.update', (updates) => {
+            for (const update of updates) {
+                if (update.id) {
+                    const existing = this.contacts.get(update.id) || {};
+                    this.contacts.set(update.id, { ...existing, ...update });
+                }
+            }
         });
     }
 
@@ -203,6 +240,12 @@ export class WhatsappSocketEnvelope {
         if (jid && !msg.key.fromMe && text.trim().length > 0) {
             // Mark as read → sends blue double-tick to the sender
             await this.waSocket?.readMessages([msg.key]);
+
+            // Capture/Update pushName in contacts
+            if (msg.pushName) {
+                const existing = this.contacts.get(jid) || {};
+                this.contacts.set(jid, { ...existing, id: jid, pushName: msg.pushName });
+            }
 
             const dto = this.toChatMessageDto(msg, text, jid);
             this.sendMessageToAgentSocket(dto);
