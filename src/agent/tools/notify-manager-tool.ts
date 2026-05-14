@@ -27,7 +27,8 @@ export function createNotifyManagerTool(botSession: string): AgentTool<typeof no
                 const managersList = rawContent
                     .split('\n')
                     .map((line) => line.trim())
-                    .filter((line) => line.length > 0 && !line.startsWith('#'));
+                    .filter((line) => line.length > 0 && !line.startsWith('#'))
+                    .map((line) => line.split(/\s+/)[0]); // Extraer solo el número/JID
 
                 if (managersList.length === 0) {
                     return {
