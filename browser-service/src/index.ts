@@ -13,7 +13,12 @@ const turndown = new TurndownService({
 
 turndown.remove(['script', 'style', 'nav', 'header', 'footer', 'aside']);
 
-const browser = await chromium.launch({ headless: true });
+const headless = (() => {
+  if (process.argv.includes('--headed')) return false;
+  if (process.argv.includes('--headless')) return true;
+  return process.env.BROWSER_SERVICE_HEADLESS !== 'false';
+})();
+const browser = await chromium.launch({ headless });
 
 const app = Fastify({ logger: false });
 
