@@ -7,3 +7,4 @@ export { createManageTasksTool, manageTasksParams } from './manage-tasks-tool.ts
 export { createGetTimeTool, getTimeParams } from './time-tool.ts';
 export { createAddRagKnowledgeTool, addRagKnowledgeParams } from './add-rag-knowledge-tool.ts';
 export { createQueryRagKnowledgeTool, queryRagKnowledgeParams } from './query-rag-knowledge-tool.ts';
+export { createBrowseUrlTool, browseUrlParams } from './browse-url-tool.ts';
