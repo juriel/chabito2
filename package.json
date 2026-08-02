@@ -37,6 +37,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "start:bun": "bun run frontend:build && bun run src/index.ts",
+    "start:all": "bash scripts/start-all.sh",
     "frontend:dev": "cd frontend && bun install && bun run dev",
     "frontend:build": "cd frontend && bun install && bun run build",
     "build": "tsc",

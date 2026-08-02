@@ -59,7 +59,7 @@ export class WhatsappSocketEnvelope {
         this.waSocket = makeWASocket({
             version,
             auth: state,
-            browser: Browsers.macOS('Desktop'),
+            browser: Browsers.appropriate('Desktop'),
             cachedGroupMetadata: async (jid) => this.groupCache.get(jid) as any,
             logger: P({ level: 'info' }) as any
         });
