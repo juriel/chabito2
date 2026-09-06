@@ -5,7 +5,7 @@
     "@mariozechner/pi-agent-core": "^0.64.0",
     "@mariozechner/pi-ai": "^0.64.0",
     "@types/ws": "^8.18.1",
-    "baileys": "^7.0.0-rc.9",
+    "baileys": "^7.0.0-rc14",
     "cors": "^2.8.6",
     "cron-parser": "^5.5.0",
     "dotenv": "^17.4.0",
