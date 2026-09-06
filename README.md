@@ -4,73 +4,48 @@ Bot de WhatsApp construido con Node.js, [Baileys](https://github.com/WhiskeySock
 
 ## Requisitos
 
-- Node.js 18 o superior
-- npm, yarn o bun
+- [Bun](https://bun.sh) (runtime oficial de este proyecto)
 
 ## Instalación
 
-### npm
-
-```bash
-npm install
-```
-
-### Yarn
-
-```bash
-yarn install
-```
-
-### Bun
-
 ```bash
 bun install
+cd browser-service && bun install && bunx playwright install chromium && cd ..
 ```
 
-## Scripts
+El `browser-service` usa Playwright para navegar páginas; necesita descargar Chromium una sola vez (no lo gestiona Bun).
 
-### npm / Yarn
-
-- `npm run start` / `yarn start`: ejecuta el proyecto en desarrollo usando `tsx`
-- `npm run build` / `yarn build`: compila TypeScript a `dist/`
-
-### Bun
-
-- `bun run start:bun`: ejecuta el proyecto directamente con Bun
-- `bun run build:bun`: genera un bundle para Bun en `dist/`
-
-La compilación ya no genera archivos `.map` dentro de los fuentes. Todo el output compilado se escribe en `dist/`.
-
-## Ejecución
-
-### Con npm
+## Ejecución (forma oficial)
 
 ```bash
-npm run start
+bun run start:all
 ```
 
-### Con Yarn
+Este comando corre `scripts/start-all.sh`, que levanta **ambos** servicios con Bun:
 
-```bash
-yarn start
-```
+1. `browser-service` (Playwright/Fastify) en segundo plano — puerto `3001` por defecto.
+2. El bot principal (`bun run start:bun`, que compila el frontend y arranca `src/index.ts`) en primer plano.
 
-### Con Bun
-
-```bash
-bun run start:bun
-```
+Con `Ctrl+C` se detienen ambos procesos.
 
 Si el puerto `8081` ya está ocupado, puedes cambiarlo temporalmente:
 
 ```bash
-AGENT_WS_PORT=8082 AGENT_WS_URL=ws://127.0.0.1:8082 bun run start:bun
+AGENT_WS_PORT=8082 AGENT_WS_URL=ws://127.0.0.1:8082 bun run start:all
 ```
 
 Servicios que se levantan al iniciar:
 
 - API HTTP de Express en `http://localhost:3000` por defecto
 - Servidor WebSocket del agente en `ws://127.0.0.1:8081` por defecto
+- `browser-service` (navegación/scraping) en `http://127.0.0.1:3001` por defecto
+
+### Scripts individuales (avanzado / debugging)
+
+- `bun run start:bun`: arranca solo el bot principal (sin `browser-service`; la tool `browse_url` fallará si lo necesita).
+- `bun run dev` / `npm run start` / `yarn start`: ejecuta el proyecto vía `tsx` (Node), útil para debugging fuera de Bun.
+- `bun run build:bun`: genera un bundle para Bun en `dist/`.
+- `bun run build`: compila TypeScript a `dist/` (sin archivos `.map`).
 
 Variables de entorno soportadas:
 
@@ -159,7 +134,7 @@ La forma más fácil de crear y emparejar tu chatbot es utilizando la interfaz g
 
 1. Ejecuta el servidor principal:
    ```bash
-   bun run start:bun
+   bun run start:all
    ```
 2. Abre tu navegador y dirígete a **[http://localhost:3000](http://localhost:3000)**.
 3. En la página principal, haz clic en **"Administrar Chatbots"** (o dirígete a `http://localhost:3000/#/chatbots`).

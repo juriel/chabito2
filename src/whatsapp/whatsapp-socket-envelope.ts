@@ -200,6 +200,17 @@ export class WhatsappSocketEnvelope {
             jid = altJid;
         }
 
+        // WhatsApp no siempre envía el número en el propio mensaje (remoteJidAlt vacío).
+        // Como último recurso, consultamos el mapeo LID↔número que Baileys ya tenga
+        // persistido de interacciones previas con este mismo contacto.
+        if (jid.endsWith('@lid')) {
+            const resolvedPn = await this.waSocket?.signalRepository.lidMapping.getPNForLID(jid);
+            if (resolvedPn) {
+                console.log(`[BAILEYS] 🔄 Resuelto LID ${jid} → Phone ${resolvedPn} vía lidMapping store`);
+                jid = resolvedPn;
+            }
+        }
+
         if (jid && !msg.key.fromMe && text.trim().length > 0) {
             // Mark as read → sends blue double-tick to the sender
             await this.waSocket?.readMessages([msg.key]);

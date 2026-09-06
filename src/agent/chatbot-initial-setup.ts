@@ -37,6 +37,7 @@ export class ChatbotInitialSetup {
     private static normalizeJid(jid: string): string {
         return jid
             ?.split('@')[0]
+            ?.split(':')[0]
             ?.trim()
             ?.toLowerCase() || '';
     }
