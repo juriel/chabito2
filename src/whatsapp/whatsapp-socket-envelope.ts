@@ -11,6 +11,7 @@ import {
 import type {
     ConnectionState,
     BaileysEventMap,
+    Contact,
     WASocket
 } from 'baileys';
 import NodeCache from 'node-cache';
@@ -19,6 +20,7 @@ import WebSocket, { type RawData } from 'ws';
 import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 import { isChatMessageDto } from '../agent/agent-ws-server.ts';
 import { TaskScheduler } from '../agent/task-scheduler.ts';
+import { listContacts, upsertContact } from '../agent/contacts-registry.ts';
 
 export class WhatsappSocketEnvelope {
     private static readonly AUTH_INFO_DIR = 'auth_info_baileys';
@@ -155,9 +157,14 @@ export class WhatsappSocketEnvelope {
             throw new Error('El socket de WhatsApp no está conectado');
         }
 
-        // Sanitize: strip +, spaces, dashes, parentheses so we get a clean E.164 number
-        const cleanNumber = to.replace(/[\s+\-()]/g, '');
-        const jid = cleanNumber.includes('@s.whatsapp.net') ? cleanNumber : `${cleanNumber}@s.whatsapp.net`;
+        const trimmed = to.trim();
+
+        // Si ya viene como JID completo (lid, número o grupo), se respeta tal cual.
+        // WhatsApp ya no siempre expone el número de teléfono real (ver @lid); en esos
+        // casos el identificador estable con el que hay que enviar es el propio @lid.
+        const isFullJid = trimmed.endsWith('@lid') || trimmed.endsWith('@s.whatsapp.net') || trimmed.endsWith('@g.us');
+        const jid = isFullJid ? trimmed : `${trimmed.replace(/[\s+\-()]/g, '')}@s.whatsapp.net`;
+
         await this.waSocket.sendMessage(jid, { text });
         console.log(`[BAILEYS] Mensaje enviado a tercero desde tool: ${jid}`);
     }
@@ -172,6 +179,38 @@ export class WhatsappSocketEnvelope {
         this.waSocket.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
             await this.handleConnectionUpdate(update);
         });
+
+        // Baileys expone la libreta de contactos sincronizada del teléfono via estos
+        // eventos; a veces trae el phoneNumber real detrás de un @lid aunque el propio
+        // mensaje no incluya remoteJidAlt.
+        this.waSocket.ev.on('contacts.upsert', (contacts: BaileysEventMap['contacts.upsert']) => {
+            this.handleContactsEvent(contacts);
+        });
+
+        this.waSocket.ev.on('contacts.update', (contacts: BaileysEventMap['contacts.update']) => {
+            this.handleContactsEvent(contacts);
+        });
+
+        this.waSocket.ev.on('messaging-history.set', ({ contacts }: BaileysEventMap['messaging-history.set']) => {
+            if (contacts?.length) {
+                console.log(`[BAILEYS] Sincronización inicial de contactos: ${contacts.length}`);
+                this.handleContactsEvent(contacts);
+            }
+        });
+    }
+
+    private handleContactsEvent(contacts: Partial<Contact>[]): void {
+        for (const contact of contacts) {
+            if (!contact.id) continue;
+
+            void upsertContact(this.uuid, contact.id, {
+                name: contact.name,
+                verifiedName: contact.verifiedName,
+                nickname: contact.notify,
+                phoneNumber: contact.phoneNumber,
+                lid: contact.lid
+            });
+        }
     }
 
     private async handleMessagesUpsert(m: BaileysEventMap['messages.upsert']): Promise<void> {
@@ -217,6 +256,34 @@ export class WhatsappSocketEnvelope {
 
             const dto = this.toChatMessageDto(msg, text, jid);
             this.sendMessageToAgentSocket(dto);
+            void this.ensureWhatsAppContact(jid, dto.peer_nickname);
+        }
+    }
+
+    /**
+     * Guarda a quien escribe en la libreta de contactos de WhatsApp de este bot
+     * (mismo mecanismo que usa la app oficial al guardar un contacto manualmente).
+     * Solo se ejecuta una vez por peer — se apoya en el registro local para no
+     * reenviar el patch en cada mensaje.
+     */
+    private async ensureWhatsAppContact(jid: string, nickname: string): Promise<void> {
+        if (!this.waSocket) return;
+        // Solo tiene sentido para personas (número o @lid), no grupos/canales/broadcasts.
+        if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return;
+
+        try {
+            const known = await listContacts(this.uuid);
+            if (known[jid]?.savedAsContact) return;
+
+            await this.waSocket.addOrEditContact(jid, {
+                fullName: nickname || jid.split('@')[0] || jid,
+                saveOnPrimaryAddressbook: true
+            });
+
+            await upsertContact(this.uuid, jid, { savedAsContact: true });
+            console.log(`[BAILEYS] 📇 Contacto agregado a la libreta de WhatsApp: ${jid} (${nickname})`);
+        } catch (error) {
+            console.error(`[BAILEYS] Error agregando contacto ${jid}:`, error);
         }
     }
 

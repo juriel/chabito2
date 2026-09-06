@@ -2,7 +2,9 @@ import { Type } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 
 export const sendWhatsAppMessageParams = Type.Object({
-    phoneNumber: Type.String({ description: 'Phone number to send the message to. Should include country code, e.g. 573001234567.' }),
+    phoneNumber: Type.String({
+        description: 'Recipient identifier. Either a phone number with country code (e.g. 573001234567), or — for contacts whose real number WhatsApp no longer exposes — their full @lid identifier as returned by list_contacts (e.g. 215504413290734@lid).'
+    }),
     message: Type.String({ description: 'The text message to send.' })
 });
 
@@ -10,7 +12,7 @@ export function createSendWhatsAppMessageTool(botSession: string): AgentTool<typ
     return {
         name: 'send_whatsapp_message',
         label: 'Send WhatsApp Message',
-        description: 'Sends a WhatsApp text message to a specific third-party phone number. Useful when the user asks you to contact someone else, notify a phone number, or forward a message.',
+        description: 'Sends a WhatsApp text message to a specific third-party contact, identified by phone number or by their @lid identifier (see list_contacts). Useful when the user asks you to contact someone else, notify a contact, or forward a message.',
         parameters: sendWhatsAppMessageParams,
         execute: async (_toolCallId, params) => {
             const port = process.env.PORT || 3000;

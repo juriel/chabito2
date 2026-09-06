@@ -1,6 +1,7 @@
 import { createServer, type Server as HttpServer } from 'node:http';
 import WebSocket, { WebSocketServer, type RawData } from 'ws';
 import { AgentsMap } from './agents-map.ts';
+import { upsertContact } from './contacts-registry.ts';
 import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 import type { AiAgentResponseEvent } from './ai-agent.ts';
 
@@ -144,6 +145,10 @@ export class AgentWebSocketServer {
     }
 
     private async dispatchMessageToAgent(message: ChatMessageDto): Promise<void> {
+        if (message.direction === 'in') {
+            void upsertContact(message.bot_session, message.peer_id, { nickname: message.peer_nickname });
+        }
+
         const conversationKey = this.getConversationKey(message);
         const agent = await this.agentsMap.getOrCreate(conversationKey);
 
