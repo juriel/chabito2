@@ -1,3 +1,4 @@
+import { jidNormalizedUser } from 'baileys';
 import { StoreFactory } from '../persistence/index.ts';
 
 /**
@@ -63,30 +64,47 @@ function enqueueWrite(botSession: string, task: () => Promise<void>): Promise<vo
     return result;
 }
 
+/** `jidNormalizedUser` quita el sufijo de dispositivo (":N"); si el jid es inválido devuelve '' — en ese caso preferimos el original a perder el dato. */
+function normalizeJid(jid: string): string {
+    return jidNormalizedUser(jid) || jid;
+}
+
 /**
  * Mezcla `patch` sobre el registro existente para `peerId` (no lo reemplaza),
  * ya que los eventos de Baileys suelen llegar como actualizaciones parciales.
+ *
+ * Normaliza `peerId` y los campos `phoneNumber`/`lid` del patch (quita sufijo de
+ * dispositivo) ACÁ, centralizado — no en cada call site. Ya se nos escapó esta
+ * normalización dos veces en distintos puntos de whatsapp-socket-envelope.ts
+ * (handleMessagesUpsert, handleContactsEvent) generando registros duplicados
+ * para la misma persona; hacerlo en el único lugar por el que todo pasa evita
+ * que se nos vuelva a olvidar en un futuro call site.
  */
 export async function upsertContact(botSession: string, peerId: string, patch: ContactPatch): Promise<void> {
     if (!peerId) {
         return;
     }
 
+    const normalizedPeerId = normalizeJid(peerId);
+    const normalizedPatch: ContactPatch = { ...patch };
+    if (patch.phoneNumber) normalizedPatch.phoneNumber = normalizeJid(patch.phoneNumber);
+    if (patch.lid) normalizedPatch.lid = normalizeJid(patch.lid);
+
     await enqueueWrite(botSession, async () => {
         const store = getStore(botSession);
         const result = await store.loadRaw(CONTACTS_KEY);
         const contacts: ContactsMap = result.ok ? result.value : {};
 
-        const existing = contacts[peerId];
+        const existing = contacts[normalizedPeerId];
         const merged: ContactRecord = { ...existing, lastSeen: Date.now() };
 
-        for (const [key, value] of Object.entries(patch) as [keyof Omit<ContactRecord, 'lastSeen'>, ContactRecord[keyof ContactRecord]][]) {
+        for (const [key, value] of Object.entries(normalizedPatch) as [keyof Omit<ContactRecord, 'lastSeen'>, ContactRecord[keyof ContactRecord]][]) {
             if (value !== undefined && value !== '') {
                 (merged as any)[key] = value;
             }
         }
 
-        contacts[peerId] = merged;
+        contacts[normalizedPeerId] = merged;
         await store.saveRaw(CONTACTS_KEY, contacts);
     });
 }
