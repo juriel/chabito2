@@ -8,6 +8,7 @@ import {
     Browsers,
     fetchLatestBaileysVersion,
     jidNormalizedUser,
+    ALL_WA_PATCH_NAMES,
     USyncQuery,
     USyncUser
 } from 'baileys';
@@ -428,6 +429,40 @@ export class WhatsappSocketEnvelope {
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             console.error(`[BAILEYS] Error actualizando contacto ${jid}:`, error);
+            return { ok: false, error: message };
+        }
+    }
+
+    /**
+     * Fuerza una resincronización completa del app-state de WhatsApp (las 5
+     * colecciones: critical_block, critical_unblock_low, regular_high, regular_low,
+     * regular). No sabemos en cuál vive exactamente `contactAction`/`lidContactAction`
+     * — en nuestros propios logs vimos "resyncing critical_unblock_low" tras guardar
+     * un contacto — así que pedimos todas para no perder nada.
+     *
+     * A diferencia de `ensureWhatsAppContact`/`refreshContact` (que solo conocen
+     * gente que ya escribió), esto trae TODOS los contactos guardados en la cuenta
+     * del bot: WhatsApp reenvía los parches `contactAction`/`lidContactAction`
+     * acumulados, que vuelven a pasar por `contacts.upsert` (ya suscripto en
+     * `setupEvents`) y terminan en el registro local igual que siempre.
+     */
+    public async syncContacts(): Promise<{ ok: true; totalContacts: number } | { ok: false; error: string }> {
+        if (!this.waSocket) {
+            return { ok: false, error: 'El socket de WhatsApp no está conectado' };
+        }
+
+        try {
+            console.log('[BAILEYS] 🔄 Forzando resync de app-state para traer todos los contactos...');
+            await this.waSocket.resyncAppState(ALL_WA_PATCH_NAMES, false);
+
+            const contacts = await listContacts(this.uuid);
+            const totalContacts = Object.keys(contacts).length;
+            console.log(`[BAILEYS] ✅ Resync completo. Contactos conocidos: ${totalContacts}`);
+
+            return { ok: true, totalContacts };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error('[BAILEYS] Error sincronizando contactos:', error);
             return { ok: false, error: message };
         }
     }

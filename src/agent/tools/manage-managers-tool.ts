@@ -392,3 +392,43 @@ export function createUpdateContactTool(botSession: string): AgentTool<typeof up
         }
     };
 }
+
+// --- SYNC CONTACTS ---
+export const syncContactsParams = Type.Object({});
+
+export function createSyncContactsTool(botSession: string): AgentTool<typeof syncContactsParams> {
+    return {
+        name: 'sync_contacts',
+        label: 'Sync Contacts',
+        description: 'Fuerza una resincronización con WhatsApp para traer TODOS los contactos guardados en la cuenta de este bot, no solo quienes ya le han escrito. Puede tardar unos segundos. Úsala antes de list_contacts/search_contacts si buscas a alguien que aún no le ha escrito al bot.',
+        parameters: syncContactsParams,
+        execute: async () => {
+            try {
+                const before = Object.keys(await listContacts(botSession)).length;
+
+                const port = process.env.PORT || 3000;
+                const url = `http://127.0.0.1:${port}/api/sessions/${encodeURIComponent(botSession)}/contacts/sync`;
+
+                const response = await fetch(url, { method: 'POST' });
+                const data = await response.json() as { success?: boolean; totalContacts?: number; error?: string };
+
+                if (!response.ok || !data.success) {
+                    return { content: [{ type: 'text', text: `❌ No pude sincronizar contactos: ${data.error || 'error desconocido'}` }] };
+                }
+
+                const after = data.totalContacts ?? 0;
+                const delta = after - before;
+                const deltaText = delta > 0 ? ` (+${delta} nuevos)` : delta < 0 ? ` (${delta})` : ' (sin cambios)';
+
+                return {
+                    content: [{
+                        type: 'text',
+                        text: `🔄 Sincronización completa. Contactos conocidos: ${after}${deltaText}. Usa list_contacts o search_contacts para verlos.`
+                    }]
+                };
+            } catch (error: any) {
+                return { content: [{ type: 'text', text: `❌ Error: ${error.message}` }] };
+            }
+        }
+    };
+}
