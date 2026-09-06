@@ -3,7 +3,7 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 
 export const sendWhatsAppMessageParams = Type.Object({
     phoneNumber: Type.String({
-        description: 'Recipient identifier. Either a phone number with country code (e.g. 573001234567), or — for contacts whose real number WhatsApp no longer exposes — their full @lid identifier as returned by list_contacts (e.g. 215504413290734@lid).'
+        description: 'Recipient identifier. Either a phone number with country code (e.g. 573001234567), or — for contacts whose real number WhatsApp no longer exposes — their full @lid identifier as returned by list_contacts (e.g. 123456789012345@lid).'
     }),
     message: Type.String({ description: 'The text message to send.' })
 });

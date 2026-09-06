@@ -6,7 +6,7 @@ import { listContacts, type ContactsMap } from '../contacts-registry.ts';
 // --- ADD MANAGER ---
 export const addManagerParams = Type.Object({
     identifier: Type.String({
-        description: 'El identificador del nuevo manager: su número de teléfono con código de país (ej: 573001234567), o — si WhatsApp no expone su número — su identificador @lid completo obtenido con list_contacts (ej: 215504413290734@lid).'
+        description: 'El identificador del nuevo manager: su número de teléfono con código de país (ej: 573001234567), o — si WhatsApp no expone su número — su identificador @lid completo obtenido con list_contacts (ej: 123456789012345@lid).'
     }),
     name: Type.String({ description: 'El nombre completo o apodo del manager.' })
 });
