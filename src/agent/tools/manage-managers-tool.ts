@@ -1,7 +1,7 @@
 import { Type } from '@mariozechner/pi-ai';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { StoreFactory } from '../../persistence/index.ts';
-import { listContacts } from '../contacts-registry.ts';
+import { listContacts, type ContactsMap } from '../contacts-registry.ts';
 
 // --- ADD MANAGER ---
 export const addManagerParams = Type.Object({
@@ -153,8 +153,9 @@ export function createListContactsTool(botSession: string): AgentTool<typeof lis
                     const identifier = info.phoneNumber
                         ? info.phoneNumber.split('@')[0]
                         : peerId;
+                    const username = info.username ? ` (@${info.username})` : '';
 
-                    return `- *${displayName}* → \`${identifier}\`${tag}`;
+                    return `- *${displayName}*${username} → \`${identifier}\`${tag}`;
                 });
 
                 return {
@@ -257,7 +258,7 @@ export function createSearchContactsTool(botSession: string): AgentTool<typeof s
 
                 const scored = Object.entries(contacts).map(([peerId, info]) => {
                     const displayName = info.name || info.verifiedName || info.nickname || peerId;
-                    const candidateTokens = [info.name, info.verifiedName, info.nickname]
+                    const candidateTokens = [info.name, info.verifiedName, info.nickname, info.username]
                         .filter((value): value is string => !!value)
                         .flatMap((value) => value.split(/\s+/))
                         .map(normalizeToken)
@@ -285,15 +286,104 @@ export function createSearchContactsTool(botSession: string): AgentTool<typeof s
                     const shortId = peerId.split('@')[0]?.toLowerCase() || '';
                     const tag = managerIds.has(shortId) ? ' _(ya es manager)_' : '';
                     const identifier = info.phoneNumber ? info.phoneNumber.split('@')[0] : peerId;
+                    const username = info.username ? ` (@${info.username})` : '';
                     const confidence = score < 1 ? ` _(${Math.round(score * 100)}% match)_` : '';
 
-                    return `- *${displayName}* → \`${identifier}\`${confidence}${tag}`;
+                    return `- *${displayName}*${username} → \`${identifier}\`${confidence}${tag}`;
                 });
 
                 return {
                     content: [{
                         type: 'text',
                         text: `🔍 *Resultados para "${params.query}":*\n${lines.join('\n')}`
+                    }]
+                };
+            } catch (error: any) {
+                return { content: [{ type: 'text', text: `❌ Error: ${error.message}` }] };
+            }
+        }
+    };
+}
+
+// --- UPDATE CONTACT ---
+
+/**
+ * Encuentra el `peerId` (clave completa en el registro) que corresponde al
+ * `identifier` que escribió el manager: puede ser el peerId completo, solo los
+ * dígitos de un número, o solo el id numérico de un @lid.
+ */
+function resolvePeerId(contacts: ContactsMap, identifier: string): string | undefined {
+    const trimmed = identifier.trim();
+    if (contacts[trimmed]) return trimmed;
+
+    const shortId = trimmed.split('@')[0]?.toLowerCase();
+    if (!shortId) return undefined;
+
+    for (const [peerId, info] of Object.entries(contacts)) {
+        const peerShortId = peerId.split('@')[0]?.toLowerCase();
+        const phoneShortId = info.phoneNumber?.split('@')[0]?.toLowerCase();
+        if (peerShortId === shortId || phoneShortId === shortId) {
+            return peerId;
+        }
+    }
+
+    return undefined;
+}
+
+export const updateContactParams = Type.Object({
+    identifier: Type.String({
+        description: 'Número de teléfono o identificador @lid de un contacto ya conocido (ver list_contacts / search_contacts).'
+    })
+});
+
+export function createUpdateContactTool(botSession: string): AgentTool<typeof updateContactParams> {
+    return {
+        name: 'update_contact',
+        label: 'Update Contact',
+        description: 'Vuelve a resolver la información de un contacto ya conocido: intenta encontrar su número real detrás del @lid y su @username, y lo re-guarda en la libreta de WhatsApp. Úsala si list_contacts/search_contacts muestran datos incompletos o si sospechas que cambiaron.',
+        parameters: updateContactParams,
+        execute: async (_toolCallId, params) => {
+            try {
+                const contacts = await listContacts(botSession);
+                const peerId = resolvePeerId(contacts, params.identifier);
+
+                if (!peerId) {
+                    return {
+                        content: [{
+                            type: 'text',
+                            text: `⚠️ No encontré ningún contacto conocido con el identificador "${params.identifier}". Usa list_contacts o search_contacts primero.`
+                        }]
+                    };
+                }
+
+                const port = process.env.PORT || 3000;
+                const url = `http://127.0.0.1:${port}/api/sessions/${encodeURIComponent(botSession)}/contacts/refresh`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ peerId })
+                });
+
+                const data = await response.json() as {
+                    success?: boolean;
+                    phoneNumber?: string;
+                    username?: string;
+                    error?: string;
+                };
+
+                if (!response.ok || !data.success) {
+                    return { content: [{ type: 'text', text: `❌ No pude actualizar el contacto: ${data.error || 'error desconocido'}` }] };
+                }
+
+                const details: string[] = [];
+                if (data.phoneNumber) details.push(`número: ${data.phoneNumber.split('@')[0]}`);
+                if (data.username) details.push(`username: @${data.username}`);
+
+                return {
+                    content: [{
+                        type: 'text',
+                        text: `✅ Contacto actualizado (${peerId}).${details.length ? ' ' + details.join(', ') + '.' : ' No se encontró número real ni @username adicionales.'}`
                     }]
                 };
             } catch (error: any) {

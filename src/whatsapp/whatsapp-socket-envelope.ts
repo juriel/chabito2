@@ -6,7 +6,9 @@ import {
     DisconnectReason,
     useMultiFileAuthState,
     Browsers,
-    fetchLatestBaileysVersion
+    fetchLatestBaileysVersion,
+    USyncQuery,
+    USyncUser
 } from 'baileys';
 import type {
     ConnectionState,
@@ -197,6 +199,14 @@ export class WhatsappSocketEnvelope {
                 this.handleContactsEvent(contacts);
             }
         });
+
+        // Baileys ≥7.0.0-rc14: WhatsApp puede vincular un @lid a un número real por fuera
+        // del flujo normal de mensajes (pnForLidChatAction); antes este evento estaba
+        // declarado pero nunca se emitía.
+        this.waSocket.ev.on('lid-mapping.update', ({ lid, pn }: BaileysEventMap['lid-mapping.update']) => {
+            console.log(`[BAILEYS] 🔗 lid-mapping.update: ${lid} → ${pn}`);
+            void upsertContact(this.uuid, lid, { phoneNumber: pn });
+        });
     }
 
     private handleContactsEvent(contacts: Partial<Contact>[]): void {
@@ -208,8 +218,31 @@ export class WhatsappSocketEnvelope {
                 verifiedName: contact.verifiedName,
                 nickname: contact.notify,
                 phoneNumber: contact.phoneNumber,
-                lid: contact.lid
+                lid: contact.lid,
+                username: contact.username
             });
+        }
+    }
+
+    /**
+     * Consulta activamente el @username de WhatsApp de un JID via USyncUsernameProtocol
+     * (Baileys ≥7.0.0-rc14). Devuelve `undefined` si no tiene username o no se pudo resolver.
+     */
+    private async resolveUsername(jid: string): Promise<string | undefined> {
+        if (!this.waSocket) return undefined;
+
+        try {
+            const query = new USyncQuery().withUsernameProtocol().withUser(new USyncUser().withId(jid));
+            const result = await this.waSocket.executeUSyncQuery(query);
+            console.log(`[BAILEYS] USync username query para ${jid} →`, JSON.stringify(result));
+
+            const entry = result?.list.find((item) => item.id === jid) ?? result?.list[0];
+            const username = entry?.['username'];
+
+            return typeof username === 'string' && username.length > 0 ? username : undefined;
+        } catch (error) {
+            console.error(`[BAILEYS] Error resolviendo username de ${jid}:`, error);
+            return undefined;
         }
     }
 
@@ -275,15 +308,64 @@ export class WhatsappSocketEnvelope {
             const known = await listContacts(this.uuid);
             if (known[jid]?.savedAsContact) return;
 
+            const username = await this.resolveUsername(jid);
+
             await this.waSocket.addOrEditContact(jid, {
                 fullName: nickname || jid.split('@')[0] || jid,
                 saveOnPrimaryAddressbook: true
             });
 
-            await upsertContact(this.uuid, jid, { savedAsContact: true });
-            console.log(`[BAILEYS] 📇 Contacto agregado a la libreta de WhatsApp: ${jid} (${nickname})`);
+            await upsertContact(this.uuid, jid, { savedAsContact: true, username });
+            console.log(`[BAILEYS] 📇 Contacto agregado a la libreta de WhatsApp: ${jid} (${nickname})${username ? ` @${username}` : ''}`);
         } catch (error) {
             console.error(`[BAILEYS] Error agregando contacto ${jid}:`, error);
+        }
+    }
+
+    /**
+     * Re-resuelve y re-guarda la información de un contacto ya conocido, a pedido
+     * (tool `update_contact`). A diferencia de `ensureWhatsAppContact`, no respeta el
+     * flag `savedAsContact` — siempre reintenta resolver número real (si `jid` es un
+     * @lid) y @username, y vuelve a llamar `addOrEditContact`.
+     */
+    public async refreshContact(jid: string): Promise<{ ok: true; phoneNumber: string | undefined; username: string | undefined } | { ok: false; error: string }> {
+        if (!this.waSocket) {
+            return { ok: false, error: 'El socket de WhatsApp no está conectado' };
+        }
+
+        try {
+            let resolvedJid = jid;
+            if (resolvedJid.endsWith('@lid')) {
+                const resolvedPn = await this.waSocket.signalRepository.lidMapping.getPNForLID(resolvedJid);
+                if (resolvedPn) {
+                    console.log(`[BAILEYS] 🔄 update_contact: LID ${resolvedJid} → Phone ${resolvedPn}`);
+                    resolvedJid = resolvedPn;
+                }
+            }
+
+            const username = await this.resolveUsername(resolvedJid);
+            const known = await listContacts(this.uuid);
+            const nickname = known[jid]?.nickname || known[resolvedJid]?.nickname || resolvedJid.split('@')[0] || resolvedJid;
+
+            await this.waSocket.addOrEditContact(resolvedJid, {
+                fullName: nickname,
+                saveOnPrimaryAddressbook: true
+            });
+
+            const phoneNumber = resolvedJid.endsWith('@s.whatsapp.net') ? resolvedJid : undefined;
+
+            await upsertContact(this.uuid, resolvedJid, { savedAsContact: true, username, phoneNumber });
+            if (resolvedJid !== jid) {
+                // El registro original bajo el @lid también se beneficia de conocer el número real.
+                await upsertContact(this.uuid, jid, { phoneNumber });
+            }
+
+            console.log(`[BAILEYS] 🔁 Contacto actualizado: ${jid}${resolvedJid !== jid ? ` (→ ${resolvedJid})` : ''}${username ? ` @${username}` : ''}`);
+            return { ok: true, phoneNumber, username };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[BAILEYS] Error actualizando contacto ${jid}:`, error);
+            return { ok: false, error: message };
         }
     }
 

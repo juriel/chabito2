@@ -48,6 +48,7 @@ export class ChabitoHttpServer {
         this.app.get('/api/sessions/:uuid/status', this.handleStatusRequest.bind(this));
         this.app.get('/api/sessions', this.handleListSessions.bind(this));
         this.app.post('/api/sessions/:uuid/send', this.handleSendWhatsAppMessage.bind(this));
+        this.app.post('/api/sessions/:uuid/contacts/refresh', this.handleRefreshContact.bind(this));
         this.app.post('/api/sessions/:uuid/cleanup', this.handleCleanupSession.bind(this));
         this.app.post('/api/sessions/cleanup', this.handleCleanupAllSessions.bind(this));
     }
@@ -176,6 +177,30 @@ export class ChabitoHttpServer {
             console.error(`[API] Error enviando mensaje desde endpoint para ${uuid}:`, errorMessage);
             res.status(500).json({ error: 'Error enviando el mensaje', details: errorMessage });
         }
+    }
+
+    private async handleRefreshContact(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        const { peerId } = req.body;
+
+        if (!peerId) {
+            res.status(400).json({ error: 'Falta el parámetro "peerId" en el body.' });
+            return;
+        }
+
+        const bot = this.activeSessions.get(uuid);
+        if (!bot) {
+            res.status(404).json({ error: 'La sesión no ha sido instanciada o no existe.' });
+            return;
+        }
+
+        const result = await bot.refreshContact(String(peerId));
+        if (!result.ok) {
+            res.status(500).json({ error: result.error });
+            return;
+        }
+
+        res.json({ success: true, phoneNumber: result.phoneNumber, username: result.username });
     }
 
     private handleQrRequest(req: express.Request, res: express.Response): void {

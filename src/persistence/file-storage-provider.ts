@@ -1,5 +1,6 @@
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import type { StorageProvider } from './types.ts';
 
 /**
@@ -44,10 +45,19 @@ export class FileStorageProvider implements StorageProvider {
         }
     }
 
+    /**
+     * Escribe de forma atómica: escribe a un archivo temporal y lo renombra sobre
+     * el destino final. `rename` es atómico en el mismo filesystem, así que dos
+     * escrituras concurrentes a la misma `key` nunca dejan un archivo a medio
+     * escribir (torn write) — la última en renombrar gana, entera.
+     */
     async write(key: string, value: string): Promise<void> {
         // Ensure directory exists in case init() wasn't called
         await mkdir(this.dir, { recursive: true });
-        await writeFile(this.keyToPath(key), value, 'utf-8');
+        const finalPath = this.keyToPath(key);
+        const tmpPath = `${finalPath}.tmp-${randomBytes(6).toString('hex')}`;
+        await writeFile(tmpPath, value, 'utf-8');
+        await rename(tmpPath, finalPath);
     }
 
     async delete(key: string): Promise<void> {
