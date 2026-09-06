@@ -264,17 +264,46 @@ export class WhatsappSocketEnvelope {
 
     private handleContactsEvent(contacts: Partial<Contact>[]): void {
         for (const contact of contacts) {
-            if (!contact.id) continue;
-
-            void upsertContact(this.uuid, contact.id, {
-                name: contact.name,
-                verifiedName: contact.verifiedName,
-                nickname: contact.notify,
-                phoneNumber: contact.phoneNumber,
-                lid: contact.lid,
-                username: contact.username
-            });
+            void this.upsertContactCanonical(contact);
         }
+    }
+
+    /**
+     * Igual que `upsertContact`, pero resolviendo primero la clave canónica.
+     *
+     * BUG que esto corrige: Baileys emite su PROPIO `contacts.update` interno en
+     * cada mensaje (`chats.js`, dentro de `upsertMessage`: `{id: jid, notify: pushName}`)
+     * usando el `remoteJid` crudo — sin aplicar la sustitución vía `remoteJidAlt` que sí
+     * hace `handleMessagesUpsert`. Como también escuchamos ese evento, terminábamos con
+     * dos entradas para la misma persona: una bajo su @lid (sin savedAsContact) y otra
+     * bajo su número real (con todo lo demás).
+     *
+     * Si el contacto trae un @lid pero no su número real en el propio evento, consultamos
+     * el mapeo que Baileys ya tenga persistido (`lidMapping.getPNForLID`) — normalmente sí
+     * lo tiene, porque el manejador interno de Baileys ya guardó ese mapeo al procesar el
+     * mensaje, antes de emitir el evento que estamos escuchando.
+     */
+    private async upsertContactCanonical(contact: Partial<Contact>): Promise<void> {
+        if (!contact.id) return;
+
+        const idIsLid = contact.id.endsWith('@lid');
+        let lid = contact.lid ?? (idIsLid ? contact.id : undefined);
+        let phoneNumber = contact.phoneNumber ?? (!idIsLid && contact.id.endsWith('@s.whatsapp.net') ? contact.id : undefined);
+
+        if (!phoneNumber && lid) {
+            phoneNumber = (await this.waSocket?.signalRepository.lidMapping.getPNForLID(lid)) ?? undefined;
+        }
+
+        const canonicalId = phoneNumber ?? lid ?? contact.id;
+
+        await upsertContact(this.uuid, canonicalId, {
+            name: contact.name,
+            verifiedName: contact.verifiedName,
+            nickname: contact.notify,
+            phoneNumber,
+            lid,
+            username: contact.username
+        });
     }
 
     /**
