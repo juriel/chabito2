@@ -432,3 +432,46 @@ export function createSyncContactsTool(botSession: string): AgentTool<typeof syn
         }
     };
 }
+
+// --- FIND BY USERNAME ---
+export const findByUsernameParams = Type.Object({
+    username: Type.String({ description: 'El @username de WhatsApp a buscar (con o sin el @ inicial).' })
+});
+
+export function createFindByUsernameTool(botSession: string): AgentTool<typeof findByUsernameParams> {
+    return {
+        name: 'find_by_username',
+        label: 'Find By Username',
+        description: 'Busca a una persona por su @username de WhatsApp y devuelve su identificador (JID) para poder agregarla como manager o escribirle, incluso si nunca le ha escrito a este chatbot antes.',
+        parameters: findByUsernameParams,
+        execute: async (_toolCallId, params) => {
+            try {
+                const port = process.env.PORT || 3000;
+                const url = `http://127.0.0.1:${port}/api/sessions/${encodeURIComponent(botSession)}/contacts/find-by-username`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: params.username })
+                });
+
+                const data = await response.json() as { success?: boolean; jid?: string; error?: string };
+
+                if (!response.ok || !data.success || !data.jid) {
+                    return { content: [{ type: 'text', text: `🔍 ${data.error || `No encontré a nadie con @${params.username.replace(/^@/, '')}`}` }] };
+                }
+
+                const identifier = data.jid.split('@')[0];
+
+                return {
+                    content: [{
+                        type: 'text',
+                        text: `✅ Encontrado: \`${data.jid}\`. Usa \`${identifier}\` con add_manager o send_whatsapp_message.`
+                    }]
+                };
+            } catch (error: any) {
+                return { content: [{ type: 'text', text: `❌ Error: ${error.message}` }] };
+            }
+        }
+    };
+}

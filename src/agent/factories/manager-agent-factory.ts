@@ -3,7 +3,7 @@ import { getConfigForType } from '../agent-configs.ts';
 import { createChangePromptTool } from '../tools/change-prompt-tool.ts';
 import { createGetPromptTool } from '../tools/get-prompt-tool.ts';
 import { createSendWhatsAppMessageTool } from '../tools/whatsapp-tool.ts';
-import { createAddManagerTool, createRemoveManagerTool, createListManagersTool, createListContactsTool, createSearchContactsTool, createUpdateContactTool, createSyncContactsTool } from '../tools/manage-managers-tool.ts';
+import { createAddManagerTool, createRemoveManagerTool, createListManagersTool, createListContactsTool, createSearchContactsTool, createUpdateContactTool, createSyncContactsTool, createFindByUsernameTool } from '../tools/manage-managers-tool.ts';
 import { createManageTasksTool } from '../tools/manage-tasks-tool.ts';
 import { createGetTimeTool } from '../tools/time-tool.ts';
 import { createAddRagKnowledgeTool } from '../tools/add-rag-knowledge-tool.ts';
@@ -44,6 +44,7 @@ export class ManagerAgentFactory {
             'search-contacts': createSearchContactsTool,
             'update-contact': createUpdateContactTool,
             'sync-contacts': createSyncContactsTool,
+            'find-by-username': createFindByUsernameTool,
             'manage-tasks': createManageTasksTool,
             'add-rag-knowledge': createAddRagKnowledgeTool,
             'query-rag-knowledge': createQueryRagKnowledgeTool,

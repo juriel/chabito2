@@ -299,6 +299,46 @@ export class WhatsappSocketEnvelope {
         }
     }
 
+    /**
+     * Busca un JID a partir de un @username (dirección inversa de `resolveUsername`).
+     * Vía USyncContactProtocol con `USyncUser.withUsername()` — misma primitiva oficial
+     * que `resolveUsername`, no requiere nada fuera de Baileys.
+     *
+     * Si lo encuentra, lo registra en `contacts.json` (con el username ya confirmado)
+     * para que aparezca de una vez en list_contacts/search_contacts sin que la persona
+     * tenga que escribirle primero al bot.
+     */
+    public async findUserByUsername(username: string): Promise<{ ok: true; jid: string } | { ok: false; error: string }> {
+        if (!this.waSocket) {
+            return { ok: false, error: 'El socket de WhatsApp no está conectado' };
+        }
+
+        const cleanUsername = username.replace(/^@/, '').trim();
+        if (!cleanUsername) {
+            return { ok: false, error: 'Username vacío' };
+        }
+
+        try {
+            const query = new USyncQuery().withContactProtocol().withUser(new USyncUser().withUsername(cleanUsername));
+            const result = await this.waSocket.executeUSyncQuery(query);
+            console.log(`[BAILEYS] USync findUserByUsername("${cleanUsername}") →`, JSON.stringify(result));
+
+            const entry = result?.list[0];
+            const jid = typeof entry?.id === 'string' ? entry.id : undefined;
+
+            if (!jid) {
+                return { ok: false, error: `No se encontró ningún usuario con @${cleanUsername}` };
+            }
+
+            await upsertContact(this.uuid, jid, { username: cleanUsername });
+            return { ok: true, jid };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[BAILEYS] Error buscando username @${cleanUsername}:`, error);
+            return { ok: false, error: message };
+        }
+    }
+
     private async handleMessagesUpsert(m: BaileysEventMap['messages.upsert']): Promise<void> {
         console.log('\n--- NUEVO EVENTO DE MENSAJE ---');
         console.log(JSON.stringify(m, undefined, 2));

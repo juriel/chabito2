@@ -50,6 +50,7 @@ export class ChabitoHttpServer {
         this.app.post('/api/sessions/:uuid/send', this.handleSendWhatsAppMessage.bind(this));
         this.app.post('/api/sessions/:uuid/contacts/refresh', this.handleRefreshContact.bind(this));
         this.app.post('/api/sessions/:uuid/contacts/sync', this.handleSyncContacts.bind(this));
+        this.app.post('/api/sessions/:uuid/contacts/find-by-username', this.handleFindByUsername.bind(this));
         this.app.post('/api/sessions/:uuid/cleanup', this.handleCleanupSession.bind(this));
         this.app.post('/api/sessions/cleanup', this.handleCleanupAllSessions.bind(this));
     }
@@ -220,6 +221,30 @@ export class ChabitoHttpServer {
         }
 
         res.json({ success: true, totalContacts: result.totalContacts });
+    }
+
+    private async handleFindByUsername(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        const { username } = req.body;
+
+        if (!username) {
+            res.status(400).json({ error: 'Falta el parámetro "username" en el body.' });
+            return;
+        }
+
+        const bot = this.activeSessions.get(uuid);
+        if (!bot) {
+            res.status(404).json({ error: 'La sesión no ha sido instanciada o no existe.' });
+            return;
+        }
+
+        const result = await bot.findUserByUsername(String(username));
+        if (!result.ok) {
+            res.status(404).json({ error: result.error });
+            return;
+        }
+
+        res.json({ success: true, jid: result.jid });
     }
 
     private handleQrRequest(req: express.Request, res: express.Response): void {
