@@ -169,3 +169,136 @@ export function createListContactsTool(botSession: string): AgentTool<typeof lis
         }
     };
 }
+
+// --- SEARCH CONTACTS ---
+
+const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
+
+function normalizeToken(value: string): string {
+    return value
+        .normalize('NFD')
+        .replace(DIACRITICS_REGEX, '') // quita acentos (á → a, etc.)
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+}
+
+/** Distancia de Levenshtein clásica (edits mínimos para convertir `a` en `b`). */
+function levenshtein(a: string, b: string): number {
+    const m = a.length;
+    const n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+
+    const dp: number[] = new Array(n + 1);
+    for (let j = 0; j <= n; j++) dp[j] = j;
+
+    for (let i = 1; i <= m; i++) {
+        let prev = dp[0] ?? 0;
+        dp[0] = i;
+        for (let j = 1; j <= n; j++) {
+            const temp = dp[j] ?? 0;
+            dp[j] = a[i - 1] === b[j - 1]
+                ? prev
+                : 1 + Math.min(prev, temp, dp[j - 1] ?? 0);
+            prev = temp;
+        }
+    }
+
+    return dp[n] ?? Math.max(m, n);
+}
+
+/**
+ * Dos palabras "matchean" si una contiene a la otra, o si están a pocos
+ * errores de tipeo de distancia (tolerancia proporcional al largo).
+ */
+function tokensMatch(queryToken: string, candidateToken: string): boolean {
+    if (!queryToken || !candidateToken) return false;
+    if (candidateToken.includes(queryToken) || queryToken.includes(candidateToken)) return true;
+
+    const maxDistance = Math.max(1, Math.floor(Math.min(queryToken.length, candidateToken.length) / 3));
+    return levenshtein(queryToken, candidateToken) <= maxDistance;
+}
+
+export const searchContactsParams = Type.Object({
+    query: Type.String({
+        description: 'Texto a buscar (nombre completo o parcial). Tolera errores de tipeo y no importa el orden de las palabras, ej: "Tores JAime" encuentra a "Jaime Uriel Torres".'
+    })
+});
+
+export function createSearchContactsTool(botSession: string): AgentTool<typeof searchContactsParams> {
+    return {
+        name: 'search_contacts',
+        label: 'Search Contacts',
+        description: 'Busca entre los contactos conocidos por nombre, tolerando errores de tipeo (typos) y sin importar el orden de las palabras. Úsala cuando no recuerdes el nombre exacto o el identificador de alguien antes de usar add_manager o send_whatsapp_message.',
+        parameters: searchContactsParams,
+        execute: async (_toolCallId, params) => {
+            const queryTokens = params.query
+                .split(/\s+/)
+                .map(normalizeToken)
+                .filter((token) => token.length > 0);
+
+            if (queryTokens.length === 0) {
+                return { content: [{ type: 'text', text: '⚠️ Escribe algún texto para buscar.' }] };
+            }
+
+            try {
+                const [contacts, managersResult] = await Promise.all([
+                    listContacts(botSession),
+                    StoreFactory.text('./data', botSession).load('managers')
+                ]);
+
+                const managerIds = new Set(
+                    (managersResult.ok ? managersResult.value : '')
+                        .split('\n')
+                        .map((line) => line.trim())
+                        .filter((line) => line.length > 0 && !line.startsWith('#'))
+                        .map((line) => line.split(/\s+/)[0]?.toLowerCase())
+                );
+
+                const scored = Object.entries(contacts).map(([peerId, info]) => {
+                    const displayName = info.name || info.verifiedName || info.nickname || peerId;
+                    const candidateTokens = [info.name, info.verifiedName, info.nickname]
+                        .filter((value): value is string => !!value)
+                        .flatMap((value) => value.split(/\s+/))
+                        .map(normalizeToken)
+                        .filter((token) => token.length > 0);
+
+                    // Cada palabra buscada debe encontrar alguna palabra del contacto que la
+                    // contenga o esté a pocos typos de distancia — el orden no importa.
+                    const matchedCount = queryTokens.filter((queryToken) =>
+                        candidateTokens.some((candidateToken) => tokensMatch(queryToken, candidateToken))
+                    ).length;
+
+                    return { peerId, info, displayName, score: matchedCount / queryTokens.length };
+                });
+
+                const matches = scored
+                    .filter((m) => m.score > 0)
+                    .sort((a, b) => b.score - a.score || b.info.lastSeen - a.info.lastSeen)
+                    .slice(0, 10);
+
+                if (matches.length === 0) {
+                    return { content: [{ type: 'text', text: `🔍 No encontré contactos que coincidan con "${params.query}".` }] };
+                }
+
+                const lines = matches.map(({ peerId, info, displayName, score }) => {
+                    const shortId = peerId.split('@')[0]?.toLowerCase() || '';
+                    const tag = managerIds.has(shortId) ? ' _(ya es manager)_' : '';
+                    const identifier = info.phoneNumber ? info.phoneNumber.split('@')[0] : peerId;
+                    const confidence = score < 1 ? ` _(${Math.round(score * 100)}% match)_` : '';
+
+                    return `- *${displayName}* → \`${identifier}\`${confidence}${tag}`;
+                });
+
+                return {
+                    content: [{
+                        type: 'text',
+                        text: `🔍 *Resultados para "${params.query}":*\n${lines.join('\n')}`
+                    }]
+                };
+            } catch (error: any) {
+                return { content: [{ type: 'text', text: `❌ Error: ${error.message}` }] };
+            }
+        }
+    };
+}
