@@ -363,6 +363,20 @@ _Recuerda que como manager puedes pedirme cambios técnicos o información del s
     }
 
     private handleAgentEvent(event: AgentEvent): void {
+        // Log centralizado de TODAS las llamadas a tools, independientemente de si la
+        // tool misma loguea algo — así queda registrado qué se ejecutó, con qué
+        // argumentos y con qué resultado, sin depender de que cada tool lo haga bien.
+        if (event.type === 'tool_execution_start') {
+            console.log(`[TOOL-CALL] ${this.storeKey ?? this.botSession} → ${event.toolName}(${this.safeStringify(event.args)}) [id=${event.toolCallId}]`);
+            return;
+        }
+
+        if (event.type === 'tool_execution_end') {
+            const status = event.isError ? '❌ ERROR' : '✅ OK';
+            console.log(`[TOOL-CALL] ${this.storeKey ?? this.botSession} ← ${event.toolName} ${status} [id=${event.toolCallId}] result=${this.safeStringify(event.result)}`);
+            return;
+        }
+
         if (event.type !== 'message_end' || event.message.role !== 'assistant') {
             return;
         }
@@ -402,6 +416,40 @@ _Recuerda que como manager puedes pedirme cambios técnicos o información del s
         void this.notifyListeners({ text: responseText });
     }
 
+    /**
+     * Inyecta un mensaje "assistant" sintético en el historial de esta conversación
+     * — usado cuando alguien (ej: un manager via `send_whatsapp_message`, o la API
+     * HTTP `/send`) le escribe directamente a este peer por fuera del flujo normal
+     * prompt→respuesta. Sin esto, el agente del peer no tiene contexto de lo que ya
+     * se le dijo y su siguiente respuesta llega "a ciegas".
+     *
+     * Se encola en `processingQueue`, igual que `receive()`, para no correr en
+     * paralelo con un turno de conversación en curso y pisar el guardado en disco.
+     */
+    public async recordAssistantMessage(text: string): Promise<void> {
+        const task = this.processingQueue.then(async () => {
+            const message: AssistantMessage = {
+                role: 'assistant',
+                content: [{ type: 'text', text }],
+                api: 'external',
+                provider: 'manual',
+                model: 'manual-send',
+                usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+                stopReason: 'stop',
+                timestamp: Date.now()
+            };
+
+            this.agent.state.messages.push(message);
+            await this.persistMessages();
+        });
+
+        this.processingQueue = task.catch((error) => {
+            console.error('[AI-AGENT] Error registrando mensaje externo en la conversación:', error);
+        });
+
+        await task;
+    }
+
     private async persistMessages(): Promise<void> {
         if (!this.store || !this.storeKey) {
             return;
@@ -412,6 +460,17 @@ _Recuerda que como manager puedes pedirme cambios técnicos o información del s
             console.log(`[AI-AGENT] Conversación guardada: ${this.storeKey} (${this.agent.state.messages.length} mensajes)`);
         } catch (error) {
             console.error('[AI-AGENT] Error guardando conversación:', error);
+        }
+    }
+
+    /** JSON.stringify con truncado, para que un resultado grande (ej: browse_url) no inunde el log. */
+    private safeStringify(value: unknown, maxLength = 500): string {
+        try {
+            const json = JSON.stringify(value);
+            if (json === undefined) return 'undefined';
+            return json.length > maxLength ? `${json.slice(0, maxLength)}…` : json;
+        } catch {
+            return String(value);
         }
     }
 

@@ -7,6 +7,7 @@ import {
     useMultiFileAuthState,
     Browsers,
     fetchLatestBaileysVersion,
+    jidNormalizedUser,
     USyncQuery,
     USyncUser
 } from 'baileys';
@@ -23,6 +24,7 @@ import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 import { isChatMessageDto } from '../agent/agent-ws-server.ts';
 import { TaskScheduler } from '../agent/task-scheduler.ts';
 import { listContacts, upsertContact } from '../agent/contacts-registry.ts';
+import { AgentsMap } from '../agent/agents-map.ts';
 
 export class WhatsappSocketEnvelope {
     private static readonly AUTH_INFO_DIR = 'auth_info_baileys';
@@ -159,16 +161,66 @@ export class WhatsappSocketEnvelope {
             throw new Error('El socket de WhatsApp no está conectado');
         }
 
-        const trimmed = to.trim();
-
-        // Si ya viene como JID completo (lid, número o grupo), se respeta tal cual.
-        // WhatsApp ya no siempre expone el número de teléfono real (ver @lid); en esos
-        // casos el identificador estable con el que hay que enviar es el propio @lid.
-        const isFullJid = trimmed.endsWith('@lid') || trimmed.endsWith('@s.whatsapp.net') || trimmed.endsWith('@g.us');
-        const jid = isFullJid ? trimmed : `${trimmed.replace(/[\s+\-()]/g, '')}@s.whatsapp.net`;
+        const jid = await this.resolveSendJid(to.trim());
 
         await this.waSocket.sendMessage(jid, { text });
         console.log(`[BAILEYS] Mensaje enviado a tercero desde tool: ${jid}`);
+
+        // Este envío ocurre por fuera del flujo normal prompt→respuesta (manager
+        // escribiéndole a un tercero, o la API /send). Si no lo registramos en el
+        // historial del destinatario, cuando responda su agente no va a tener
+        // contexto de lo que ya se le dijo.
+        try {
+            await AgentsMap.getInstance().recordOutgoingMessage(this.uuid, jid, text);
+        } catch (error) {
+            console.error(`[AI-AGENT] Error registrando mensaje saliente en el historial de ${jid}:`, error);
+        }
+    }
+
+    /**
+     * Resuelve el identificador que llega de una tool/API (managers.txt, un
+     * parámetro de tool, etc.) a un JID realmente enviable.
+     *
+     * BUG que esto corrige: `managers.txt` guarda solo dígitos (ej: "215504413290734"),
+     * y ese id puede ser un número de teléfono real O el id numérico de un @lid — no
+     * hay forma de saberlo mirando solo los dígitos. Asumir siempre `@s.whatsapp.net`
+     * producía un JID inexistente para managers/contactos cuyo número real WhatsApp
+     * nunca expuso (solo @lid): el envío no fallaba (Baileys no lanza error), pero
+     * el mensaje nunca llegaba, y además creaba una conversación nueva y separada
+     * (`conversation-<id>_s.whatsapp.net.json`) en vez de sumarse al historial real
+     * de esa persona (`conversation-<id>_lid.json`).
+     *
+     * Prioridad:
+     * 1. Si ya es un JID completo (@lid/@s.whatsapp.net/@g.us), se usa tal cual.
+     * 2. Si los dígitos coinciden con un contacto conocido (por su peerId o su
+     *    phoneNumber resuelto), se usa el peerId real de ese contacto.
+     * 3. Si no hay match conocido, se asume número de teléfono nuevo y se arma
+     *    `${dígitos}@s.whatsapp.net` (comportamiento anterior).
+     */
+    private async resolveSendJid(to: string): Promise<string> {
+        const isFullJid = to.endsWith('@lid') || to.endsWith('@s.whatsapp.net') || to.endsWith('@g.us');
+        if (isFullJid) {
+            // Por si viene con sufijo de dispositivo (ej: "...:0@s.whatsapp.net") — mismo
+            // motivo que la normalización en handleMessagesUpsert.
+            return jidNormalizedUser(to) || to;
+        }
+
+        const shortId = to.replace(/[\s+\-()]/g, '').toLowerCase();
+        const contacts = await listContacts(this.uuid);
+
+        for (const [peerId, info] of Object.entries(contacts)) {
+            const peerShortId = peerId.split('@')[0]?.toLowerCase();
+            const phoneShortId = info.phoneNumber?.split('@')[0]?.toLowerCase();
+
+            if (peerShortId === shortId || phoneShortId === shortId) {
+                if (peerId !== `${shortId}@s.whatsapp.net`) {
+                    console.log(`[BAILEYS] 🔎 Identificador "${to}" resuelto contra contacto conocido: ${peerId}`);
+                }
+                return peerId;
+            }
+        }
+
+        return `${shortId}@s.whatsapp.net`;
     }
 
     private setupEvents(): void {
@@ -280,6 +332,17 @@ export class WhatsappSocketEnvelope {
             if (resolvedPn) {
                 console.log(`[BAILEYS] 🔄 Resuelto LID ${jid} → Phone ${resolvedPn} vía lidMapping store`);
                 jid = resolvedPn;
+            }
+        }
+
+        // Normaliza (quita sufijo de dispositivo ":N", ej "573004654724:0@...").
+        // Sin esto, el mismo contacto escribiendo desde distintos dispositivos vinculados
+        // generaba una conversación/agente separado por cada variante del JID.
+        if (jid) {
+            const normalized = jidNormalizedUser(jid);
+            if (normalized && normalized !== jid) {
+                console.log(`[BAILEYS] 🔧 JID normalizado (sin sufijo de dispositivo): ${jid} → ${normalized}`);
+                jid = normalized;
             }
         }
 

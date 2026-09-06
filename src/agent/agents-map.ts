@@ -54,6 +54,20 @@ export class AgentsMap {
         }
     }
 
+    /**
+     * Registra en el historial de `botSession:peerId` un mensaje que se le envió a
+     * ese peer por fuera del flujo normal prompt→respuesta (ej: un manager
+     * escribiéndole directamente via `send_whatsapp_message`/API `/send`).
+     *
+     * Pasa por `getOrCreate` a propósito: así el mensaje queda tanto en el agente
+     * vivo en memoria (si ya existe uno para esa conversación) como en disco.
+     */
+    public async recordOutgoingMessage(botSession: string, peerId: string, text: string): Promise<void> {
+        const conversationKey = `${botSession}:${peerId}`;
+        const agent = await this.getOrCreate(conversationKey);
+        await agent.recordAssistantMessage(text);
+    }
+
     private async createAgent(conversationKey: string): Promise<AiAgent> {
         // conversationKey format: "botSession:peerId"
         const separatorIndex = conversationKey.indexOf(':');
