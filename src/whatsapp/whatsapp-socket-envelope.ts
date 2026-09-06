@@ -282,21 +282,53 @@ export class WhatsappSocketEnvelope {
      * (Baileys ≥7.0.0-rc14). Devuelve `undefined` si no tiene username o no se pudo resolver.
      */
     private async resolveUsername(jid: string): Promise<string | undefined> {
-        if (!this.waSocket) return undefined;
+        const results = await this.resolveUsernamesBatch([jid]);
+        return results.get(jid);
+    }
 
-        try {
-            const query = new USyncQuery().withUsernameProtocol().withUser(new USyncUser().withId(jid));
-            const result = await this.waSocket.executeUSyncQuery(query);
-            console.log(`[BAILEYS] USync username query para ${jid} →`, JSON.stringify(result));
+    /**
+     * Versión batch de `resolveUsername`: resuelve el @username de varios JIDs en
+     * una sola consulta USync por bloque, en vez de una petición de red por contacto.
+     *
+     * Idea tomada de `fetchContactUsernames(...jids)` del fork baron-baileys-v2
+     * (ver USERNAME.md), pero reimplementada contra nuestras propias primitivas
+     * oficiales (`USyncQuery`/`USyncUser`/`USyncUsernameProtocol`) — no depende de
+     * ese fork ni de nada fuera de nuestro `baileys` actual.
+     *
+     * Trocea en bloques de `CHUNK_SIZE` por si WhatsApp limita cuántos usuarios
+     * acepta por query USync (no está documentado, así que preferimos no arriesgar
+     * una consulta gigante con cientos de JIDs de una vez).
+     */
+    private async resolveUsernamesBatch(jids: string[]): Promise<Map<string, string>> {
+        const results = new Map<string, string>();
+        if (!this.waSocket || jids.length === 0) return results;
 
-            const entry = result?.list.find((item) => item.id === jid) ?? result?.list[0];
-            const username = entry?.['username'];
+        const CHUNK_SIZE = 50;
 
-            return typeof username === 'string' && username.length > 0 ? username : undefined;
-        } catch (error) {
-            console.error(`[BAILEYS] Error resolviendo username de ${jid}:`, error);
-            return undefined;
+        for (let i = 0; i < jids.length; i += CHUNK_SIZE) {
+            const chunk = jids.slice(i, i + CHUNK_SIZE);
+
+            try {
+                const query = new USyncQuery().withUsernameProtocol();
+                for (const jid of chunk) {
+                    query.withUser(new USyncUser().withId(jid));
+                }
+
+                const result = await this.waSocket.executeUSyncQuery(query);
+                console.log(`[BAILEYS] USync batch username query (${chunk.length} jids) →`, JSON.stringify(result));
+
+                for (const entry of result?.list ?? []) {
+                    const username = entry['username'];
+                    if (typeof entry.id === 'string' && typeof username === 'string' && username.length > 0) {
+                        results.set(entry.id, username);
+                    }
+                }
+            } catch (error) {
+                console.error(`[BAILEYS] Error resolviendo usernames en batch (bloque ${i}-${i + chunk.length}):`, error);
+            }
         }
+
+        return results;
     }
 
     /**
@@ -494,6 +526,24 @@ export class WhatsappSocketEnvelope {
         try {
             console.log('[BAILEYS] 🔄 Forzando resync de app-state para traer todos los contactos...');
             await this.waSocket.resyncAppState(ALL_WA_PATCH_NAMES, false);
+
+            // Backfill de @username en batch: `contactAction` (contactos con número real
+            // conocido) no trae username en su parche, solo `lidContactAction` lo incluye.
+            // En vez de una consulta USync por contacto, resolvemos todos los que faltan
+            // en una sola tanda (troceada) — ver `resolveUsernamesBatch`.
+            const contactsBeforeBackfill = await listContacts(this.uuid);
+            const jidsMissingUsername = Object.entries(contactsBeforeBackfill)
+                .filter(([, info]) => !info.username)
+                .map(([peerId]) => peerId);
+
+            if (jidsMissingUsername.length > 0) {
+                console.log(`[BAILEYS] 🔎 Backfill de @username en batch para ${jidsMissingUsername.length} contactos...`);
+                const usernames = await this.resolveUsernamesBatch(jidsMissingUsername);
+                for (const [jid, username] of usernames) {
+                    await upsertContact(this.uuid, jid, { username });
+                }
+                console.log(`[BAILEYS] ✅ Backfill encontró ${usernames.size} username(s).`);
+            }
 
             const contacts = await listContacts(this.uuid);
             const totalContacts = Object.keys(contacts).length;
