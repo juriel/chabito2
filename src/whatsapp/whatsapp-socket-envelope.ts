@@ -66,7 +66,7 @@ export class WhatsappSocketEnvelope {
         this.waSocket = makeWASocket({
             version,
             auth: state,
-            browser: Browsers.appropriate('Desktop'),
+            browser: Browsers.ubuntu('Chrome'),
             cachedGroupMetadata: async (jid) => this.groupCache.get(jid) as any,
             logger: P({ level: 'info' }) as any
         });

@@ -21,7 +21,7 @@ export class ClientAgentFactory {
             .withBotSession(botSession)
             .withPeerId(peerId)
             .withSystemPrompt(config.systemPrompt)
-            .withThinkingLevel('off');
+            .withThinkingLevel('minimal');
 
         // Add tools for clients
         const toolRegistry: Record<string, (botSession: string) => any> = {

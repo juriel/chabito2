@@ -29,7 +29,7 @@ export class ManagerAgentFactory {
             .withBotSession(botSession)
             .withPeerId(peerId)
             .withSystemPrompt(config.systemPrompt)
-            .withThinkingLevel('off')
+            .withThinkingLevel('minimal')
             .withIsManager(true); // ← Managers pueden usar comandos especiales
 
         // Add tools for managers

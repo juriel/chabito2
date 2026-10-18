@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ChatMessageDto } from '../dto/chat-message-dto.ts';
+import type { ChatMessageDto } from '../dto/chat-message-dto.ts';
 import { ChatbotInitialSetup } from './chatbot-initial-setup.ts';
 
 /**
