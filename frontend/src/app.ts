@@ -69,7 +69,7 @@ export class ChabitoApp extends LitElement {
           </nav>
         </header>
 
-        <main class="flex-grow mx-auto px-6 py-10 max-w-6xl w-full">
+        <main class="app-container flex-grow w-full">
           ${this.renderContent()}
         </main>
 
