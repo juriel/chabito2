@@ -44,15 +44,15 @@ export class ChatbotCreationBox extends LitElement {
 
   render() {
     return html`
-      <div class="grid gap-3">
-        <label for="uuid" class="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--color-primary)]">UUID del chatbot</label>
-        <input id="uuid" type="text" .value=${this.uuidInput} @input=${this.updateUuid} placeholder="ejemplo: demo-session"
-          class="rounded-[var(--radius-soft)] border border-[color:var(--color-border)] bg-white px-4 py-3 text-[color:var(--color-text-on-light)] outline-none transition focus:border-[color:var(--color-secondary)] focus:shadow-[0_0_0_1px_rgba(58,124,165,0.18)]" />
-      </div>
-      <p class="mt-3 text-sm leading-7 text-[color:rgba(26,26,26,0.68)]">Cada UUID crea una nueva sesión <code>/api/sessions/:uuid</code> y permite mostrar su QR.</p>
-      ${this.apiError ? html`<p class="mt-3 rounded-[var(--radius-soft)] border border-[rgba(58,124,165,0.14)] bg-[color:var(--color-surface-muted)] px-4 py-3 text-sm font-semibold text-[color:var(--color-primary)]">${this.apiError}</p>` : ''}
-      <button class="mt-4 inline-flex w-full items-center justify-center rounded-[var(--radius-soft)] bg-[color:var(--color-primary)] px-6 py-3 text-sm font-semibold text-[color:var(--color-text-on-dark)] transition hover:bg-[color:var(--color-secondary)]"
-        @click=${this.handleCreate}>Crear chatbot</button>
+      <form class="grid gap-4" @submit=${this.handleCreate}>
+        <div class="grid gap-2">
+          <label for="uuid" class="field-label">UUID del chatbot</label>
+          <input id="uuid" type="text" class="input" .value=${this.uuidInput} @input=${this.updateUuid} placeholder="ejemplo: demo-session" autocomplete="off" />
+          <p class="muted m-0">Cada UUID crea una sesión nueva y muestra su QR para vincularla.</p>
+        </div>
+        ${this.apiError ? html`<p class="notice m-0">${this.apiError}</p>` : ''}
+        <button type="submit" class="btn btn-primary btn-block">Crear chatbot</button>
+      </form>
     `;
   }
 }

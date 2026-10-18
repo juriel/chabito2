@@ -41,48 +41,42 @@ export class ChatbotCard extends LitElement {
   render() {
     if (!this.session) return html``;
 
-    const badgeClasses = this.session.status === 'open'
-      ? 'bg-[rgba(99,216,255,0.18)] text-[color:var(--color-primary)]'
-      : this.session.status === 'error'
-      ? 'bg-[rgba(138,77,255,0.16)] text-[color:var(--color-primary)]'
-      : 'bg-[rgba(39,0,136,0.12)] text-[color:var(--color-primary)]';
+    const status = this.session.status;
+    const badgeClass = ['open', 'connecting', 'close', 'error'].includes(status) ? `badge-${status}` : '';
+    const statusLabel: Record<string, string> = { open: 'Conectado', connecting: 'Conectando', close: 'Desconectado', error: 'Error' };
+    const initial = (this.session.name || this.session.uuid).trim().charAt(0).toUpperCase();
 
     return html`
-      <article class="overflow-hidden rounded-[10px] border border-[color:var(--color-border)] bg-white shadow-[0_14px_30px_rgba(39,0,136,0.06)]">
-        <div class="border-b border-[color:var(--color-border)] bg-[color:var(--color-surface-muted)] px-6 py-5">
-          <h3 class="text-lg font-semibold tracking-[0.03em] text-[color:var(--color-primary)]">${this.session.uuid}</h3>
-          <p class="mt-1 text-sm text-[color:rgba(26,26,26,0.68)]">
-            Estado: <span class="inline-flex rounded-[var(--radius-soft)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${badgeClasses}">${this.session.status}</span>
-          </p>
+      <article class="card overflow-hidden">
+        <div class="bot-card-head">
+          <h3 class="bot-card-name">${this.session.uuid}</h3>
+          <span class="badge ${badgeClass}">${statusLabel[status] ?? status}</span>
         </div>
-        <div class="p-6 grid gap-4">
-          <div class="flex min-h-[220px] items-center justify-center rounded-[8px] border border-dashed border-[rgba(151,170,255,0.28)] bg-[color:var(--color-surface-muted)]">
-            ${this.session.status === 'open'
-              ? html`<div class="grid justify-items-center gap-3 p-4 text-center">
-                  <img src="${this.session.avatarUrl}" alt="Avatar de ${this.session.phoneNumber ?? this.session.uuid}" class="h-24 w-24 rounded-full object-cover bg-white"
-                    @error=${(e: Event) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  <span class="text-sm font-semibold text-[color:var(--color-primary)]">Conectado</span>
-                  ${this.session.name ? html`<span class="text-base font-semibold">${this.session.name}</span>` : ''}
-                  ${this.session.phoneNumber ? html`<span class="text-sm text-[color:rgba(26,26,26,0.68)]">+${this.session.phoneNumber}</span>` : ''}
+        <div class="bot-card-body">
+          <div class="bot-panel">
+            ${status === 'open'
+              ? html`<div class="grid justify-items-center gap-1">
+                  <div class="avatar">
+                    ${initial}
+                    ${this.session.avatarUrl
+                      ? html`<img src="${this.session.avatarUrl}" alt="Avatar de ${this.session.phoneNumber ?? this.session.uuid}"
+                          @error=${(e: Event) => { (e.target as HTMLImageElement).style.display = 'none'; }} />`
+                      : ''}
+                  </div>
+                  <p class="m-0 mt-3 text-lg font-bold">${this.session.name || 'Cuenta vinculada'}</p>
+                  ${this.session.phoneNumber ? html`<p class="muted m-0">+${this.session.phoneNumber}</p>` : ''}
                 </div>`
               : this.session.loading
-              ? html`<span class="text-[color:rgba(26,26,26,0.62)]">Cargando QR...</span>`
+              ? html`<span class="muted">Cargando QR...</span>`
               : this.session.qrUrl
-              ? html`<img src="${this.session.qrUrl}" alt="QR de ${this.session.uuid}" class="max-w-full h-auto rounded-2xl" @load=${this.handleQrImageLoad} @error=${this.handleQrImageError} />`
-              : html`<span class="text-[color:rgba(26,26,26,0.62)]">QR no disponible</span>`}
+              ? html`<img class="qr" src="${this.session.qrUrl}" alt="QR de ${this.session.uuid}" @load=${this.handleQrImageLoad} @error=${this.handleQrImageError} />`
+              : html`<span class="muted">QR no disponible. Pulsa “Generar nuevo QR”.</span>`}
           </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <button class="inline-flex items-center justify-center rounded-[var(--radius-soft)] bg-[color:var(--color-primary)] px-5 py-3 text-sm font-semibold text-[color:var(--color-text-on-dark)] transition hover:bg-[color:var(--color-secondary)] disabled:cursor-not-allowed disabled:bg-[rgba(58,124,165,0.45)]"
-              @click=${this.triggerRegenerateQr} ?disabled=${this.session.loading || this.session.status === 'open'}>
-              Generar nuevo QR
-            </button>
-            <button class="inline-flex items-center justify-center rounded-[var(--radius-soft)] border border-[color:var(--color-border)] bg-white px-5 py-3 text-sm font-semibold text-[color:var(--color-primary)] transition hover:bg-[color:var(--color-surface-muted)] disabled:cursor-not-allowed disabled:border-[rgba(58,124,165,0.12)]"
-              @click=${this.triggerRefresh} ?disabled=${this.session.loading}>
-              Actualizar estado
-            </button>
+          <div class="bot-actions">
+            <button class="btn btn-primary" @click=${this.triggerRegenerateQr} ?disabled=${this.session.loading || status === 'open'}>Generar nuevo QR</button>
+            <button class="btn btn-outline" @click=${this.triggerRefresh} ?disabled=${this.session.loading}>Actualizar estado</button>
           </div>
-          ${this.session.error ? html`<p class="text-sm font-semibold text-[color:var(--color-primary)]">${this.session.error}</p>` : ''}
-          
+          ${this.session.error ? html`<p class="notice m-0">${this.session.error}</p>` : ''}
         </div>
       </article>
     `;

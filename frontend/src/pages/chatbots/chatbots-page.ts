@@ -229,15 +229,13 @@ export class ChatbotsPage extends LitElement {
 
   render() {
     return html`
-      <section class="py-12" @refresh-session=${this.handleRefreshSession} @regenerate-qr=${this.handleRegenerateQr} @create-session=${this.handleCreateSession}>
-        <div class="header-actions mb-10">
+      <section @refresh-session=${this.handleRefreshSession} @regenerate-qr=${this.handleRegenerateQr} @create-session=${this.handleCreateSession}>
+        <div class="page-header">
           <div>
-            <h2 class="section-heading" style="text-align: left; margin-bottom: 0.5rem;">Administrar Chatbots</h2>
-            <p style="color: rgba(var(--color-text), 0.6); font-size: 1.1rem;">Gestiona tus instancias de WhatsApp y revisa su estado de vinculación.</p>
+            <h2 class="page-title">Administrar chatbots</h2>
+            <p class="page-subtitle">Gestiona tus instancias de WhatsApp y revisa su estado de vinculación.</p>
           </div>
-          <button @click=${() => this.showModal = true} class="button btn-primary" style="padding: 1rem 2rem;">
-            + Nueva Instancia
-          </button>
+          <button @click=${() => this.showModal = true} class="btn btn-primary">+ Nueva instancia</button>
         </div>
 
         <chatbot-list .sessions=${this.sessions}></chatbot-list>
@@ -246,7 +244,7 @@ export class ChatbotsPage extends LitElement {
         <div class="modal-overlay ${this.showModal ? 'active' : ''}" @click=${(e: Event) => { if(e.target === e.currentTarget) this.showModal = false; }}>
           <div class="modal-content">
             <div class="modal-header">
-              <h3 class="text-2xl font-black text-[color:var(--color-primary)]">Nueva Sesión</h3>
+              <h3 class="modal-title">Nueva sesión</h3>
               <button class="modal-close" @click=${() => this.showModal = false}>&times;</button>
             </div>
             <chatbot-creation-box .apiError=${this.apiError}></chatbot-creation-box>

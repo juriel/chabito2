@@ -22,11 +22,9 @@ export class ChatbotList extends LitElement {
 
   render() {
     return html`
-      <div class="mt-10 grid gap-6 md:grid-cols-2">
-        ${this.sessions.length === 0
-          ? html`<p class="rounded-[1.5rem] border border-[rgba(183,198,255,0.24)] bg-[rgba(255,255,255,0.22)] px-5 py-4 text-sm text-[color:rgba(26,26,26,0.66)] backdrop-blur-sm">Aún no hay chatbots. Crea uno para ver el QR y el estado.</p>`
-          : this.sessions.map((session) => html`<chatbot-card .session=${session}></chatbot-card>`)}
-      </div>
+      ${this.sessions.length === 0
+        ? html`<div class="card p-10 text-center"><p class="muted">Aún no hay chatbots. Crea uno para vincular tu WhatsApp con un QR.</p></div>`
+        : html`<div class="bot-grid">${this.sessions.map((session) => html`<chatbot-card .session=${session}></chatbot-card>`)}</div>`}
     `;
   }
 }
