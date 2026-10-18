@@ -55,7 +55,7 @@ export class ChatbotCard extends LitElement {
         <div class="bot-card-body">
           <div class="bot-panel">
             ${status === 'open'
-              ? html`<div class="grid justify-items-center gap-1">
+              ? html`<div class="bot-profile">
                   <div class="avatar">
                     ${initial}
                     ${this.session.avatarUrl
@@ -63,13 +63,18 @@ export class ChatbotCard extends LitElement {
                           @error=${(e: Event) => { (e.target as HTMLImageElement).style.display = 'none'; }} />`
                       : ''}
                   </div>
-                  <p class="m-0 mt-3 text-lg font-bold">${this.session.name || 'Cuenta vinculada'}</p>
-                  ${this.session.phoneNumber ? html`<p class="muted mono m-0">+${this.session.phoneNumber}</p>` : ''}
+                  <div>
+                    <p class="m-0 text-lg font-bold">${this.session.name || 'Cuenta vinculada'}</p>
+                    ${this.session.phoneNumber ? html`<p class="muted mono m-0">+${this.session.phoneNumber}</p>` : ''}
+                  </div>
                 </div>`
               : this.session.loading
               ? html`<span class="muted">Cargando QR...</span>`
               : this.session.qrUrl
-              ? html`<img class="qr" src="${this.session.qrUrl}" alt="QR de ${this.session.uuid}" @load=${this.handleQrImageLoad} @error=${this.handleQrImageError} />`
+              ? html`<div class="qr-wrap">
+                  <img class="qr" src="${this.session.qrUrl}" alt="QR de ${this.session.uuid}" @load=${this.handleQrImageLoad} @error=${this.handleQrImageError} />
+                  <p class="qr-help">En WhatsApp: Ajustes → Dispositivos vinculados → Vincular dispositivo.</p>
+                </div>`
               : html`<span class="muted">QR no disponible. Pulsa “Generar nuevo QR”.</span>`}
           </div>
           <div class="bot-actions">

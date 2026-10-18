@@ -14,12 +14,36 @@ export class LandingPage extends LitElement {
   render() {
     return html`
       <section class="hero">
-        <div class="hero-logo"><img src="${this.logoSrc}" alt="Logo de Chabito" class="h-20 w-20" /></div>
-        <h1 class="hero-title">Chabito</h1>
-        <p class="hero-copy">Tu asistente de WhatsApp con IA para lanzar sesiones, vincular cuentas con un QR y administrar tus chatbots desde una interfaz simple.</p>
-        <div class="hero-actions">
-          <a href="#/chatbots" @click=${(event: Event) => { event.preventDefault(); this.navigate('#/chatbots'); }} class="btn btn-light btn-lg">Administrar chatbots</a>
-          <a href="/html/documentation.html" class="btn btn-ghost-light btn-lg">Documentación</a>
+        <div class="hero-grid">
+          <div>
+            <div class="hero-logo"><img src="${this.logoSrc}" alt="Logo de Chabito" class="h-14 w-14" /></div>
+            <h1 class="hero-title">Chabito</h1>
+            <p class="hero-copy">Tu asistente de WhatsApp con IA para lanzar sesiones, vincular cuentas con un QR y administrar tus chatbots desde una interfaz simple.</p>
+            <div class="hero-actions">
+              <a href="#/chatbots" @click=${(event: Event) => { event.preventDefault(); this.navigate('#/chatbots'); }} class="btn btn-light btn-lg">Administrar chatbots</a>
+              <a href="/html/documentation.html" class="btn btn-ghost-light btn-lg">Documentación</a>
+            </div>
+          </div>
+          <div class="hero-preview" aria-hidden="true">
+            <div class="preview-head"><span>demo-session</span><span class="badge badge-open">Conectado</span></div>
+            <div class="preview-body">
+              <div class="preview-avatar">C</div>
+              <div><p class="preview-name">Chabito</p><p class="preview-meta">+57 300 000 0000</p></div>
+            </div>
+            <div class="preview-bubbles">
+              <div class="bubble bubble-in">Hola, ¿tienen disponible el plan mensual?</div>
+              <div class="bubble bubble-out">¡Hola! Sí, te cuento los detalles 👋</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pt-16">
+        <h2 class="section-heading">Cómo funciona</h2>
+        <div class="steps">
+          <div class="card step"><h3>Crea una instancia</h3><p>Asigna un UUID a tu chatbot desde el panel.</p></div>
+          <div class="card step"><h3>Escanea el QR</h3><p>Vincula tu WhatsApp desde Dispositivos vinculados.</p></div>
+          <div class="card step"><h3>Listo para responder</h3><p>El estado, número y avatar quedan visibles en el panel.</p></div>
         </div>
       </section>
 

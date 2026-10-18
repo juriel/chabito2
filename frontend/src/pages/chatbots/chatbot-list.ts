@@ -23,7 +23,11 @@ export class ChatbotList extends LitElement {
   render() {
     return html`
       ${this.sessions.length === 0
-        ? html`<div class="card p-10 text-center"><p class="muted">Aún no hay chatbots. Crea uno para vincular tu WhatsApp con un QR.</p></div>`
+        ? html`<div class="card empty-state">
+            <h3>Aún no hay chatbots</h3>
+            <p class="muted m-0">Crea una instancia y vincula tu WhatsApp con un QR.</p>
+            <button class="btn btn-primary" @click=${() => this.dispatchEvent(new CustomEvent('open-create', { bubbles: true, composed: true }))}>+ Nueva instancia</button>
+          </div>`
         : html`<div class="bot-grid">${this.sessions.map((session) => html`<chatbot-card .session=${session}></chatbot-card>`)}</div>`}
     `;
   }
