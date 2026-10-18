@@ -49,6 +49,7 @@ out/
 
 # Chabito Specific
 auth_info_baileys/
+auth_info_baileys_backup/
 config/
 test-agent.ts
 

@@ -1,5 +1,5 @@
 import makeWASocket from 'baileys';
-import { rm } from 'node:fs/promises';
+import { mkdir, rename, rm } from 'node:fs/promises';
 import P from 'pino';
 import QRCode from 'qrcode';
 import {
@@ -26,9 +26,12 @@ import { isChatMessageDto } from '../agent/agent-ws-server.ts';
 import { TaskScheduler } from '../agent/task-scheduler.ts';
 import { listContacts, upsertContact } from '../agent/contacts-registry.ts';
 import { AgentsMap } from '../agent/agents-map.ts';
+import { describeSharedContacts, parseVCard, type SharedContact } from './vcard.ts';
 
 export class WhatsappSocketEnvelope {
     private static readonly AUTH_INFO_DIR = 'auth_info_baileys';
+    // Fuera de AUTH_INFO_DIR para que el arranque no lo confunda con una sesión a restaurar.
+    private static readonly AUTH_BACKUP_DIR = 'auth_info_baileys_backup';
 
     public uuid: string;
     public waSocket?: WASocket;
@@ -45,6 +48,7 @@ export class WhatsappSocketEnvelope {
     private readonly taskScheduler: TaskScheduler;
     private agentSocketReconnectTimeout: NodeJS.Timeout | undefined;
     private isAgentSocketOpen = false;
+    private reconnectTimeout: NodeJS.Timeout | undefined;
 
     constructor(uuid: string) {
         this.uuid = uuid;
@@ -231,7 +235,9 @@ export class WhatsappSocketEnvelope {
             await this.handleMessagesUpsert(m);
         });
 
+        const currentSocket = this.waSocket;
         this.waSocket.ev.on('connection.update', async (update: Partial<ConnectionState>) => {
+            if (currentSocket !== this.waSocket) return; // evento de un socket ya reemplazado
             await this.handleConnectionUpdate(update);
         });
 
@@ -400,6 +406,49 @@ export class WhatsappSocketEnvelope {
         }
     }
 
+    /** Contactos adjuntos (tarjeta de contacto única o varias) como lista de nombre + teléfonos. */
+    private extractSharedContacts(message: NonNullable<BaileysEventMap['messages.upsert']['messages'][number]['message']>): SharedContact[] {
+        const cards = [
+            ...(message.contactMessage ? [message.contactMessage] : []),
+            ...(message.contactsArrayMessage?.contacts ?? [])
+        ];
+
+        return cards.map((card) => parseVCard(card.vcard || '', card.displayName || ''));
+    }
+
+    /**
+     * Guarda un número en la libreta de contactos de WhatsApp de este bot (tool `add_contact`
+     * del manager). Verifica antes que el número tenga WhatsApp.
+     */
+    public async addContact(phoneNumber: string, name: string): Promise<{ ok: true; jid: string } | { ok: false; error: string }> {
+        if (!this.waSocket) {
+            return { ok: false, error: 'El socket de WhatsApp no está conectado' };
+        }
+
+        const digits = phoneNumber.replace(/\D/g, '');
+        if (digits.length < 8) {
+            return { ok: false, error: `Número inválido: "${phoneNumber}". Incluye el código de país (ej: 573001234567).` };
+        }
+
+        try {
+            const [lookup] = (await this.waSocket.onWhatsApp(`${digits}@s.whatsapp.net`)) ?? [];
+            if (lookup && !lookup.exists) {
+                return { ok: false, error: `El número +${digits} no tiene WhatsApp.` };
+            }
+
+            const jid = jidNormalizedUser(lookup?.jid || `${digits}@s.whatsapp.net`);
+            await this.waSocket.addOrEditContact(jid, { fullName: name, saveOnPrimaryAddressbook: true });
+            await upsertContact(this.uuid, jid, { name, phoneNumber: jid, savedAsContact: true });
+
+            console.log(`[BAILEYS] 📇 Contacto agregado a la libreta de WhatsApp (tool add_contact): ${jid} (${name})`);
+            return { ok: true, jid };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[BAILEYS] Error agregando contacto +${digits}:`, error);
+            return { ok: false, error: message };
+        }
+    }
+
     private async handleMessagesUpsert(m: BaileysEventMap['messages.upsert']): Promise<void> {
         console.log('\n--- NUEVO EVENTO DE MENSAJE ---');
         console.log(JSON.stringify(m, undefined, 2));
@@ -407,7 +456,10 @@ export class WhatsappSocketEnvelope {
         const msg = m.messages[0];
         if (!msg || !msg.message) return;
 
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        const sharedContacts = this.extractSharedContacts(msg.message);
+        const text = msg.message.conversation
+            || msg.message.extendedTextMessage?.text
+            || (sharedContacts.length ? describeSharedContacts(sharedContacts) : '');
         
         let jid = msg.key.remoteJid || '';
         const altJid = (msg.key as any).remoteJidAlt;
@@ -612,9 +664,16 @@ export class WhatsappSocketEnvelope {
     private async handleConnectionUpdate(update: Partial<ConnectionState>): Promise<void> {
         const { connection, lastDisconnect, qr } = update;
 
+        console.log('[BAILEYS] connection.update:', JSON.stringify({
+            connection,
+            qr: qr ? 'recibido' : undefined,
+            error: (lastDisconnect?.error as Error | undefined)?.message,
+        }));
+
         if (connection) this.connectionState = connection as any;
         if (lastDisconnect) this.lastDisconnect = lastDisconnect;
         if (qr) this.qr = qr;
+        if (connection === 'open') delete this.qr; // ya vinculado: el QR dejó de ser válido
 
         if (this.qr) {
             console.log(await QRCode.toString(this.qr, { type: 'terminal', small: true }));
@@ -628,13 +687,57 @@ export class WhatsappSocketEnvelope {
             console.log('🔄 ¿Reconectar?: ', shouldReconnect);
 
             if (shouldReconnect) {
-                setTimeout(() => this.connect(), 2000);
+                this.reconnectTimeout = setTimeout(() => {
+                    this.reconnectTimeout = undefined;
+                    this.connect().catch((error) => {
+                        console.error(`[BAILEYS] Error reconectando la sesión ${this.uuid}:`, error);
+                    });
+                }, 2000);
             } else {
-                await this.deleteSessionAuthFolder();
-                console.log(`⚠️ Sesión cerrada. Se eliminó la carpeta de autenticación para ${this.uuid}.`);
+                // WhatsApp rechazó las credenciales (sesión cerrada desde el teléfono): ya no
+                // sirven para conectar, así que es el único caso en que se borran.
+                this.releaseSessionResources();
+                await rm(this.getSessionAuthPath(), { recursive: true, force: true });
+                console.log(`⚠️ WhatsApp cerró la sesión ${this.uuid} (logout). Se eliminó su carpeta de autenticación; usa "Generar nuevo QR" para volver a vincular.`);
             }
         } else if (this.connectionState === 'open') {
             console.log('✅ ¡Conectado a WhatsApp con éxito!');
+        }
+    }
+
+    /**
+     * Descarta el socket actual, aparta las credenciales guardadas (se mueven a
+     * AUTH_BACKUP_DIR, no se borran) y vuelve a conectar, de modo que Baileys emita un QR nuevo. Pensado para sesiones en estado `close` (o sin QR
+     * vigente); una sesión `open` debe cerrarse explícitamente antes.
+     */
+    public async regenerateQr(): Promise<{ ok: true } | { ok: false; error: string }> {
+        if (this.connectionState === 'open') {
+            return { ok: false, error: 'La sesión está conectada; no hay QR que regenerar.' };
+        }
+
+        try {
+            if (this.reconnectTimeout) {
+                clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = undefined;
+            }
+
+            const previousSocket = this.waSocket;
+            delete this.waSocket; // los eventos del socket viejo quedan ignorados
+            try {
+                previousSocket?.end(undefined);
+            } catch {
+                // el socket ya estaba cerrado
+            }
+
+            this.releaseSessionResources();
+            await this.archiveSessionAuthFolder();
+            delete this.lastDisconnect;
+            this.connectionState = 'connecting';
+
+            await this.connect();
+            return { ok: true };
+        } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
     }
 
@@ -642,14 +745,43 @@ export class WhatsappSocketEnvelope {
         return `${WhatsappSocketEnvelope.AUTH_INFO_DIR}/${this.uuid}`;
     }
 
-    private async deleteSessionAuthFolder(): Promise<void> {
+    /** Mueve la carpeta de autenticación a un respaldo con marca de tiempo en vez de borrarla. */
+    private async archiveSessionAuthFolder(): Promise<void> {
+        const backupRoot = WhatsappSocketEnvelope.AUTH_BACKUP_DIR;
+        await mkdir(backupRoot, { recursive: true });
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        try {
+            await rename(this.getSessionAuthPath(), `${backupRoot}/${this.uuid}-${stamp}`);
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+    }
+
+    private releaseSessionResources(): void {
         this.taskScheduler.stop();
-        const sessionAuthPath = this.getSessionAuthPath();
-        await rm(sessionAuthPath, { recursive: true, force: true });
         delete this.qr;
         delete this.waSocket;
         this.wsSocket?.close();
         this.wsSocket = undefined;
         this.isAgentSocketOpen = false;
+    }
+
+    /** Número, nombre e id de la cuenta de WhatsApp vinculada (solo con la sesión abierta). */
+    public getOwnProfile(): { jid: string; phoneNumber: string; name?: string } | undefined {
+        const user = this.waSocket?.user;
+        if (this.connectionState !== 'open' || !user?.id) return undefined;
+        const jid = jidNormalizedUser(user.id);
+        return { jid, phoneNumber: jid.split('@')[0] ?? '', ...(user.name ? { name: user.name } : {}) };
+    }
+
+    /** URL de la foto de perfil propia, o undefined si no tiene o la privacidad la oculta. */
+    public async getOwnAvatarUrl(): Promise<string | undefined> {
+        const profile = this.getOwnProfile();
+        if (!profile || !this.waSocket) return undefined;
+        try {
+            return await this.waSocket.profilePictureUrl(profile.jid, 'image');
+        } catch {
+            return undefined;
+        }
     }
 }

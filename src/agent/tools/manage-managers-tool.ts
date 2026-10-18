@@ -393,6 +393,45 @@ export function createUpdateContactTool(botSession: string): AgentTool<typeof up
     };
 }
 
+// --- ADD CONTACT ---
+export const addContactParams = Type.Object({
+    phoneNumber: Type.String({
+        description: 'Número de teléfono con código de país, solo dígitos (ej: 573001234567). Si el manager compartió una tarjeta de contacto, usa el número que aparece en "[Contacto compartido]".'
+    }),
+    name: Type.String({ description: 'Nombre con el que se guardará el contacto en WhatsApp.' })
+});
+
+export function createAddContactTool(botSession: string): AgentTool<typeof addContactParams> {
+    return {
+        name: 'add_contact',
+        label: 'Add Contact',
+        description: 'Guarda un número como contacto en la libreta de WhatsApp de este bot. Úsala cuando el manager comparta una tarjeta de contacto (llega como "[Contacto compartido]") o te pida guardar a alguien. Verifica que el número tenga WhatsApp. Si el número no trae código de país, pregúntaselo al manager antes de llamarla. No hace a la persona manager: para eso usa add_manager.',
+        parameters: addContactParams,
+        execute: async (_toolCallId, params) => {
+            try {
+                const port = process.env.PORT || 3000;
+                const url = `http://127.0.0.1:${port}/api/sessions/${encodeURIComponent(botSession)}/contacts/add`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phoneNumber: params.phoneNumber, name: params.name })
+                });
+
+                const data = await response.json() as { success?: boolean; jid?: string; error?: string };
+
+                if (!response.ok || !data.success) {
+                    return { content: [{ type: 'text', text: `❌ No pude agregar el contacto: ${data.error || 'error desconocido'}` }] };
+                }
+
+                return { content: [{ type: 'text', text: `✅ Contacto "${params.name}" guardado en WhatsApp (${data.jid}).` }] };
+            } catch (error: any) {
+                return { content: [{ type: 'text', text: `❌ Error: ${error.message}` }] };
+            }
+        }
+    };
+}
+
 // --- SYNC CONTACTS ---
 export const syncContactsParams = Type.Object({});
 

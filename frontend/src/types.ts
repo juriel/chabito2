@@ -2,6 +2,9 @@ export interface ChatbotSession {
   uuid: string;
   status: string;
   qrUrl?: string;
+  phoneNumber?: string;
+  name?: string;
+  avatarUrl?: string;
   loading: boolean;
   error?: string;
 }

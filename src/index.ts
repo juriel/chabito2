@@ -2,9 +2,14 @@
 import "dotenv/config";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import dns from "node:dns";
 import os from "node:os";
 import path from "node:path";
 import { ChabitoHttpServer } from "./webserver/chabito_http_server.ts";
+
+// Muchas redes resuelven IPv6 primero pero no lo enrutan; sin esto la conexión a
+// WhatsApp puede quedarse colgada sin emitir el QR.
+dns.setDefaultResultOrder("ipv4first");
 
 function isGraphicalSession(): boolean {
   if (process.env["CI"]) return false;

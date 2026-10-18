@@ -26,9 +26,22 @@ export class ChatbotsPage extends LitElement {
     this.showModal = false;
   }
 
+  private statusPoll?: ReturnType<typeof setInterval>;
+
   connectedCallback() {
     super.connectedCallback();
     this.loadSessions();
+    // Mantiene estado, QR y datos de la cuenta al día sin parpadeo de "Cargando".
+    this.statusPoll = setInterval(() => {
+      for (const session of this.sessions) {
+        if (!session.loading) void this.refreshSession(session.uuid, true);
+      }
+    }, 5000);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    clearInterval(this.statusPoll);
   }
 
   private async loadSessions() {
@@ -53,6 +66,10 @@ export class ChatbotsPage extends LitElement {
 
   private handleRefreshSession = (event: CustomEvent<{ uuid: string }>) => {
     this.refreshSession(event.detail.uuid);
+  };
+
+  private handleRegenerateQr = (event: CustomEvent<{ uuid: string }>) => {
+    this.regenerateQr(event.detail.uuid);
   };
 
   private handleCreateSession = (event: CustomEvent<{ uuid: string }>) => {
@@ -118,6 +135,33 @@ export class ChatbotsPage extends LitElement {
     }
   }
 
+  private async regenerateQr(uuid: string) {
+    this.sessions = this.sessions.map((item) =>
+      item.uuid === uuid ? { ...item, loading: true, qrUrl: undefined, error: undefined } : item
+    );
+    this.requestUpdate();
+
+    try {
+      const response = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(uuid)}/qr/regenerate`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error || `Error regenerando el QR (${response.status})`);
+      }
+
+      await this.refreshSession(uuid);
+      this.scheduleQrRefresh(uuid);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.sessions = this.sessions.map((item) =>
+        item.uuid === uuid ? { ...item, loading: false, error: message } : item
+      );
+      this.requestUpdate();
+    }
+  }
+
   private scheduleQrRefresh(uuid: string, attempt = 0) {
     const maxAttempts = 8;
     const currentSession = this.sessions.find((item) => item.uuid === uuid);
@@ -137,14 +181,16 @@ export class ChatbotsPage extends LitElement {
     }, delay);
   }
 
-  private async refreshSession(uuid: string) {
+  private async refreshSession(uuid: string, silent = false) {
     const sessionIndex = this.sessions.findIndex((item) => item.uuid === uuid);
     if (sessionIndex < 0) return;
 
-    this.sessions = this.sessions.map((item) =>
-      item.uuid === uuid ? { ...item, loading: true, error: undefined } : item
-    );
-    this.requestUpdate();
+    if (!silent) {
+      this.sessions = this.sessions.map((item) =>
+        item.uuid === uuid ? { ...item, loading: true, error: undefined } : item
+      );
+      this.requestUpdate();
+    }
 
     try {
       const statusResponse = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(uuid)}/status`);
@@ -158,9 +204,15 @@ export class ChatbotsPage extends LitElement {
         ? `${API_BASE}/api/sessions/${encodeURIComponent(uuid)}/qr/png?cache=${Date.now()}`
         : undefined;
 
+      const isOpen = status === 'open';
+      const phoneNumber: string | undefined = statusData?.phoneNumber || undefined;
+      const avatarUrl = isOpen
+        ? `${API_BASE}/api/sessions/${encodeURIComponent(uuid)}/avatar?cache=${Math.floor(Date.now() / 300000)}`
+        : undefined;
+
       this.sessions = this.sessions.map((item) =>
         item.uuid === uuid
-          ? { ...item, status, qrUrl, loading: false, error: undefined }
+          ? { ...item, status, qrUrl: isOpen ? undefined : qrUrl, phoneNumber, name: statusData?.name || undefined, avatarUrl, loading: false, error: undefined }
           : item
       );
       this.apiError = '';
@@ -177,7 +229,7 @@ export class ChatbotsPage extends LitElement {
 
   render() {
     return html`
-      <section class="py-12" @refresh-session=${this.handleRefreshSession} @create-session=${this.handleCreateSession}>
+      <section class="py-12" @refresh-session=${this.handleRefreshSession} @regenerate-qr=${this.handleRegenerateQr} @create-session=${this.handleCreateSession}>
         <div class="header-actions mb-10">
           <div>
             <h2 class="section-heading" style="text-align: left; margin-bottom: 0.5rem;">Administrar Chatbots</h2>

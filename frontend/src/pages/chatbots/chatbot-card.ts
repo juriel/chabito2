@@ -30,6 +30,14 @@ export class ChatbotCard extends LitElement {
     }));
   }
 
+  private triggerRegenerateQr() {
+    this.dispatchEvent(new CustomEvent('regenerate-qr', {
+      detail: { uuid: this.session.uuid },
+      bubbles: true,
+      composed: true
+    }));
+  }
+
   render() {
     if (!this.session) return html``;
 
@@ -49,7 +57,15 @@ export class ChatbotCard extends LitElement {
         </div>
         <div class="p-6 grid gap-4">
           <div class="flex min-h-[220px] items-center justify-center rounded-[8px] border border-dashed border-[rgba(151,170,255,0.28)] bg-[color:var(--color-surface-muted)]">
-            ${this.session.loading
+            ${this.session.status === 'open'
+              ? html`<div class="grid justify-items-center gap-3 p-4 text-center">
+                  <img src="${this.session.avatarUrl}" alt="Avatar de ${this.session.phoneNumber ?? this.session.uuid}" class="h-24 w-24 rounded-full object-cover bg-white"
+                    @error=${(e: Event) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  <span class="text-sm font-semibold text-[color:var(--color-primary)]">Conectado</span>
+                  ${this.session.name ? html`<span class="text-base font-semibold">${this.session.name}</span>` : ''}
+                  ${this.session.phoneNumber ? html`<span class="text-sm text-[color:rgba(26,26,26,0.68)]">+${this.session.phoneNumber}</span>` : ''}
+                </div>`
+              : this.session.loading
               ? html`<span class="text-[color:rgba(26,26,26,0.62)]">Cargando QR...</span>`
               : this.session.qrUrl
               ? html`<img src="${this.session.qrUrl}" alt="QR de ${this.session.uuid}" class="max-w-full h-auto rounded-2xl" @load=${this.handleQrImageLoad} @error=${this.handleQrImageError} />`
@@ -57,8 +73,8 @@ export class ChatbotCard extends LitElement {
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
             <button class="inline-flex items-center justify-center rounded-[var(--radius-soft)] bg-[color:var(--color-primary)] px-5 py-3 text-sm font-semibold text-[color:var(--color-text-on-dark)] transition hover:bg-[color:var(--color-secondary)] disabled:cursor-not-allowed disabled:bg-[rgba(58,124,165,0.45)]"
-              @click=${this.triggerRefresh} ?disabled=${this.session.loading}>
-              Refrescar QR
+              @click=${this.triggerRegenerateQr} ?disabled=${this.session.loading || this.session.status === 'open'}>
+              Generar nuevo QR
             </button>
             <button class="inline-flex items-center justify-center rounded-[var(--radius-soft)] border border-[color:var(--color-border)] bg-white px-5 py-3 text-sm font-semibold text-[color:var(--color-primary)] transition hover:bg-[color:var(--color-surface-muted)] disabled:cursor-not-allowed disabled:border-[rgba(58,124,165,0.12)]"
               @click=${this.triggerRefresh} ?disabled=${this.session.loading}>
@@ -66,7 +82,7 @@ export class ChatbotCard extends LitElement {
             </button>
           </div>
           ${this.session.error ? html`<p class="text-sm font-semibold text-[color:var(--color-primary)]">${this.session.error}</p>` : ''}
-          <p class="text-sm text-[color:rgba(26,26,26,0.62)]">GET /api/sessions/${this.session.uuid}/qr/png</p>
+          
         </div>
       </article>
     `;

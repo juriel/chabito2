@@ -43,12 +43,15 @@ export class ChabitoHttpServer {
         this.app.get('/dashboard', this.handleDashboardRequest.bind(this));
         this.app.post('/api/sessions/:uuid', this.handleCreateSession.bind(this));
         this.app.get('/api/sessions/:uuid/qr', this.handleQrRequest.bind(this));
+        this.app.post('/api/sessions/:uuid/qr/regenerate', this.handleRegenerateQr.bind(this));
         this.app.get('/api/sessions/:uuid/qr/text', this.handleQrTextRequest.bind(this));
         this.app.get('/api/sessions/:uuid/qr/png', this.handleQrPngRequest.bind(this));
+        this.app.get('/api/sessions/:uuid/avatar', this.handleAvatarRequest.bind(this));
         this.app.get('/api/sessions/:uuid/status', this.handleStatusRequest.bind(this));
         this.app.get('/api/sessions', this.handleListSessions.bind(this));
         this.app.post('/api/sessions/:uuid/send', this.handleSendWhatsAppMessage.bind(this));
         this.app.post('/api/sessions/:uuid/contacts/refresh', this.handleRefreshContact.bind(this));
+        this.app.post('/api/sessions/:uuid/contacts/add', this.handleAddContact.bind(this));
         this.app.post('/api/sessions/:uuid/contacts/sync', this.handleSyncContacts.bind(this));
         this.app.post('/api/sessions/:uuid/contacts/find-by-username', this.handleFindByUsername.bind(this));
         this.app.post('/api/sessions/:uuid/cleanup', this.handleCleanupSession.bind(this));
@@ -205,6 +208,30 @@ export class ChabitoHttpServer {
         res.json({ success: true, phoneNumber: result.phoneNumber, username: result.username });
     }
 
+    private async handleAddContact(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        const { phoneNumber, name } = req.body;
+
+        if (!phoneNumber || !name) {
+            res.status(400).json({ error: 'Faltan parámetros "phoneNumber" o "name" en el body.' });
+            return;
+        }
+
+        const bot = this.activeSessions.get(uuid);
+        if (!bot) {
+            res.status(404).json({ error: 'La sesión no ha sido instanciada o no existe.' });
+            return;
+        }
+
+        const result = await bot.addContact(String(phoneNumber), String(name));
+        if (!result.ok) {
+            res.status(400).json({ error: result.error });
+            return;
+        }
+
+        res.status(201).json({ success: true, jid: result.jid });
+    }
+
     private async handleSyncContacts(req: express.Request, res: express.Response): Promise<void> {
         const uuid = this.getUuidParam(req.params.uuid);
 
@@ -268,6 +295,25 @@ export class ChabitoHttpServer {
         });
     }
 
+    private async handleRegenerateQr(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        console.log(`[API] POST /api/sessions/${uuid}/qr/regenerate`);
+        const bot = this.activeSessions.get(uuid);
+
+        if (!bot) {
+            res.status(404).json({ error: 'La sesión no ha sido instanciada o no existe.' });
+            return;
+        }
+
+        const result = await bot.regenerateQr();
+        if (!result.ok) {
+            res.status(409).json({ error: result.error, state: bot.connectionState });
+            return;
+        }
+
+        res.status(202).json({ message: 'Generando un nuevo QR.', uuid, state: bot.connectionState });
+    }
+
     private async handleQrTextRequest(req: express.Request, res: express.Response): Promise<void> {
         const uuid = this.getUuidParam(req.params.uuid);
         console.log(`[API] GET /api/sessions/${uuid}/qr/text`);
@@ -316,7 +362,6 @@ export class ChabitoHttpServer {
 
     private handleStatusRequest(req: express.Request, res: express.Response): void {
         const uuid = this.getUuidParam(req.params.uuid);
-        console.log(`[API] GET /api/sessions/${uuid}/status`);
         const bot = this.activeSessions.get(uuid);
 
         if (!bot) {
@@ -325,13 +370,41 @@ export class ChabitoHttpServer {
             return;
         }
 
+        const isOpen = bot.connectionState === 'open';
+        const profile = bot.getOwnProfile();
         res.json({
             uuid,
             state: bot.connectionState,
             hasSocketConnected: !!bot.sock,
-            qrPending: !!bot.qr && bot.connectionState !== 'open',
-            qr: bot.qr || null
+            qrPending: !!bot.qr && !isOpen,
+            qr: isOpen ? null : bot.qr || null,
+            phoneNumber: profile?.phoneNumber ?? null,
+            name: profile?.name ?? null
         });
+    }
+
+    private async handleAvatarRequest(req: express.Request, res: express.Response): Promise<void> {
+        const uuid = this.getUuidParam(req.params.uuid);
+        const bot = this.activeSessions.get(uuid);
+        const avatarUrl = await bot?.getOwnAvatarUrl();
+
+        if (!avatarUrl) {
+            res.status(404).json({ error: 'No hay foto de perfil disponible.' });
+            return;
+        }
+
+        try {
+            const upstream = await fetch(avatarUrl);
+            if (!upstream.ok) {
+                res.status(502).json({ error: 'No se pudo descargar la foto de perfil.' });
+                return;
+            }
+            res.type(upstream.headers.get('content-type') || 'image/jpeg')
+                .set('Cache-Control', 'private, max-age=300')
+                .send(Buffer.from(await upstream.arrayBuffer()));
+        } catch (error) {
+            res.status(502).json({ error: 'No se pudo descargar la foto de perfil.', details: String(error) });
+        }
     }
 
     private getUuidParam(uuidParam: string | string[] | undefined): string {
