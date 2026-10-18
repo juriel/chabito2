@@ -56,6 +56,7 @@ export class ChatbotsPage extends LitElement {
         }));
         this.requestUpdate('sessions');
         for (const session of this.sessions) {
+          void this.refreshSession(session.uuid, true);
           this.scheduleQrRefresh(session.uuid);
         }
       }
