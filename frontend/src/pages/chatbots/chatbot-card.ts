@@ -64,7 +64,7 @@ export class ChatbotCard extends LitElement {
                       : ''}
                   </div>
                   <p class="m-0 mt-3 text-lg font-bold">${this.session.name || 'Cuenta vinculada'}</p>
-                  ${this.session.phoneNumber ? html`<p class="muted m-0">+${this.session.phoneNumber}</p>` : ''}
+                  ${this.session.phoneNumber ? html`<p class="muted mono m-0">+${this.session.phoneNumber}</p>` : ''}
                 </div>`
               : this.session.loading
               ? html`<span class="muted">Cargando QR...</span>`
