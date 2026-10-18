@@ -47,7 +47,7 @@ export class ChatbotCard extends LitElement {
     const initial = (this.session.name || this.session.uuid).trim().charAt(0).toUpperCase();
 
     return html`
-      <article class="card overflow-hidden">
+      <article class="card lift">
         <div class="bot-card-head">
           <h3 class="bot-card-name">${this.session.uuid}</h3>
           <span class="badge ${badgeClass}">${statusLabel[status] ?? status}</span>
@@ -78,7 +78,7 @@ export class ChatbotCard extends LitElement {
               : html`<span class="muted">QR no disponible. Pulsa “Generar nuevo QR”.</span>`}
           </div>
           <div class="bot-actions">
-            <button class="btn btn-primary" @click=${this.triggerRegenerateQr} ?disabled=${this.session.loading || status === 'open'}>Generar nuevo QR</button>
+            <button class="btn btn-accent" @click=${this.triggerRegenerateQr} ?disabled=${this.session.loading || status === 'open'}>Generar nuevo QR</button>
             <button class="btn btn-outline" @click=${this.triggerRefresh} ?disabled=${this.session.loading}>Actualizar estado</button>
           </div>
           ${this.session.error ? html`<p class="notice m-0">${this.session.error}</p>` : ''}

@@ -236,14 +236,14 @@ export class ChatbotsPage extends LitElement {
             <h2 class="page-title">Administrar chatbots</h2>
             <p class="page-subtitle">Gestiona tus instancias de WhatsApp y revisa su estado de vinculación.</p>
           </div>
-          <button @click=${() => this.showModal = true} class="btn btn-primary">+ Nueva instancia</button>
+          <button @click=${() => this.showModal = true} class="btn btn-primary btn-lg">+ Nueva instancia</button>
         </div>
 
         ${this.sessions.length > 0 ? html`
           <div class="stat-grid">
-            <div class="card stat"><p class="stat-label">Instancias</p><p class="stat-value">${this.sessions.length}</p></div>
-            <div class="card stat"><p class="stat-label">Conectadas</p><p class="stat-value ok">${this.sessions.filter((s) => s.status === 'open').length}</p></div>
-            <div class="card stat"><p class="stat-label">Sin conectar</p><p class="stat-value pending">${this.sessions.filter((s) => s.status !== 'open').length}</p></div>
+            <div class="stat"><p class="stat-label">Instancias</p><p class="stat-value">${this.sessions.length}</p></div>
+            <div class="stat"><p class="stat-label">Conectadas</p><p class="stat-value ok">${this.sessions.filter((s) => s.status === 'open').length}</p></div>
+            <div class="stat"><p class="stat-label">Sin conectar</p><p class="stat-value pending">${this.sessions.filter((s) => s.status !== 'open').length}</p></div>
           </div>` : ''}
 
         <chatbot-list .sessions=${this.sessions}></chatbot-list>
